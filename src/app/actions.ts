@@ -207,9 +207,10 @@ export async function createShareLinkAction(formData: FormData) {
 export async function resendArchivedTestAction(formData: FormData) {
   const user = await requireUser();
   const sourceTestId = formData.get("sourceTestId")?.toString() ?? "";
+  let newTestId = "";
 
   try {
-    const newTestId = await cloneTestForNewStudent({
+    newTestId = await cloneTestForNewStudent({
       sourceTestId,
       createdBy: user.id,
       studentName: formData.get("studentName")?.toString() ?? "",
@@ -221,11 +222,12 @@ export async function resendArchivedTestAction(formData: FormData) {
     revalidatePath("/tests/archive");
     revalidatePath("/tests/library");
     revalidatePath("/dashboard");
-    redirect(`/tests/${newTestId}?reused=1`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "שכפול המבחן נכשל";
     redirect(`/tests/archive?error=${encodeURIComponent(message)}`);
   }
+
+  redirect(`/tests/${newTestId}?reused=1`);
 }
 
 export async function updateTestDurationAction(formData: FormData) {
