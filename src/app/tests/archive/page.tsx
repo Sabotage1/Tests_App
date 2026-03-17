@@ -1,6 +1,5 @@
 import Link from "next/link";
 
-import { resendArchivedTestAction } from "@/app/actions";
 import { requireUser } from "@/lib/auth";
 import type { TestStatus } from "@/lib/constants";
 import { getTests } from "@/lib/repository";
@@ -69,35 +68,13 @@ export default async function ArchiveTestsPage({ searchParams }: ArchivePageProp
                   <td>{formatDate(test.submittedAt)}</td>
                   <td>{formatGrade(test.grade)}</td>
                   <td>
-                    <div className="stack">
-                      <div className="button-row">
-                        <Link className="button button-secondary" href={`/tests/${test.id}`}>
-                          פתיחת מבחן
-                        </Link>
-                        <Link className="button button-success" href={`/tests/${test.id}/grade`}>
-                          בדיקה חוזרת
-                        </Link>
-                      </div>
-                      <form action={resendArchivedTestAction}>
-                        <input type="hidden" name="sourceTestId" value={test.id} />
-                        <div className="grid grid-3">
-                          <label>
-                            שם נבחן חדש
-                            <input name="studentName" defaultValue="" required />
-                          </label>
-                          <label>
-                            מייל תלמיד חדש
-                            <input name="studentEmail" type="email" defaultValue="" />
-                          </label>
-                          <label>
-                            תאריך ושעת שליחה
-                            <input name="sentAt" type="datetime-local" />
-                          </label>
-                        </div>
-                        <button className="button button-primary" type="submit">
-                          שליחה מחדש
-                        </button>
-                      </form>
+                    <div className="button-row">
+                      <Link className="button button-secondary" href={`/tests/${test.id}`}>
+                        פתיחת מבחן
+                      </Link>
+                      <Link className="button button-success" href={`/tests/${test.id}/grade`}>
+                        בדיקה חוזרת
+                      </Link>
                     </div>
                   </td>
                 </tr>
