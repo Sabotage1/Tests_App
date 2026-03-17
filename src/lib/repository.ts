@@ -436,6 +436,7 @@ export async function createTest(input: {
   questionCount: number;
   durationMinutes?: number;
   sentAt?: string;
+  onlyAnswered?: boolean;
   subjectIds: string[];
   stageIds: string[];
   studentName?: string;
@@ -474,6 +475,13 @@ export async function createTest(input: {
   );
 
   let pool = result.rows;
+
+  if (input.onlyAnswered) {
+    pool = pool.filter((row) => {
+      const answer = row.answer.trim();
+      return answer !== "" && answer !== MISSING_ANSWER_TEXT;
+    });
+  }
 
   if (input.selectionMode === "filtered") {
     pool = pool.filter((row) => {

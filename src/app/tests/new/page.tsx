@@ -66,6 +66,13 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
           </div>
 
           <div className="stack">
+            <label className="checkbox-card" style={{ maxWidth: 420 }}>
+              <input type="checkbox" name="onlyAnswered" />
+              בחר רק שאלות עם תשובה צפויה קיימת
+            </label>
+          </div>
+
+          <div className="stack">
             <strong>Subjects למבחן</strong>
             <div className="checkbox-grid">
               {subjects.map((subject) => (

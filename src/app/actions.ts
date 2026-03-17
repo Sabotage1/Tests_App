@@ -178,6 +178,7 @@ export async function createTestAction(formData: FormData) {
       questionCount: Number(formData.get("questionCount")?.toString() ?? "0"),
       durationMinutes: rawDuration === "" ? undefined : Number(rawDuration),
       sentAt: formData.get("sentAt")?.toString() ?? "",
+      onlyAnswered: formData.get("onlyAnswered")?.toString() === "on",
       subjectIds: getMany(formData, "subjectIds"),
       stageIds: getMany(formData, "stageIds"),
       studentName: formData.get("studentName")?.toString() ?? "",
