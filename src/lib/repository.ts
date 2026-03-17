@@ -38,6 +38,10 @@ function formatArray(values: string[] | null | undefined) {
   return values ?? [];
 }
 
+function isMissingDuration(value: number | undefined) {
+  return value === undefined || Number.isNaN(value);
+}
+
 async function syncQuestionLinks(
   client: PoolClient,
   table: "question_subjects" | "question_stages",
@@ -79,6 +83,28 @@ export async function authenticateUser(username: string, password: string) {
 export async function getSubjects() {
   const result = await query<Option>("SELECT id AS value, name AS label FROM subjects ORDER BY name");
   return result.rows;
+}
+
+export async function getDefaultTestDurationMinutes() {
+  const result = await query<{ value: string }>(
+    "SELECT value FROM app_settings WHERE key = $1",
+    ["default_test_duration_minutes"],
+  );
+
+  const parsed = Number(result.rows[0]?.value ?? DEFAULT_DURATION_MINUTES);
+  return Number.isNaN(parsed) ? DEFAULT_DURATION_MINUTES : parsed;
+}
+
+export async function setDefaultTestDurationMinutes(durationMinutes: number) {
+  await query(
+    `
+      INSERT INTO app_settings (key, value, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `,
+    ["default_test_duration_minutes", String(durationMinutes)],
+  );
 }
 
 export async function getStages() {
@@ -129,6 +155,79 @@ export async function createUser(input: {
       bcrypt.hashSync(input.password, 10),
     ],
   );
+}
+
+export async function updateUser(input: {
+  id: string;
+  username: string;
+  displayName: string;
+  email?: string;
+  role: "admin" | "editor";
+  password?: string;
+}) {
+  if (input.password?.trim()) {
+    await query(
+      `
+        UPDATE users
+        SET username = $1,
+            display_name = $2,
+            email = $3,
+            role = $4,
+            password_hash = $5
+        WHERE id = $6
+      `,
+      [
+        input.username.trim().toLowerCase(),
+        input.displayName.trim(),
+        input.email?.trim() || null,
+        input.role,
+        bcrypt.hashSync(input.password.trim(), 10),
+        input.id,
+      ],
+    );
+    return;
+  }
+
+  await query(
+    `
+      UPDATE users
+      SET username = $1,
+          display_name = $2,
+          email = $3,
+          role = $4
+      WHERE id = $5
+    `,
+    [input.username.trim().toLowerCase(), input.displayName.trim(), input.email?.trim() || null, input.role, input.id],
+  );
+}
+
+export async function changeUserPassword(input: {
+  userId: string;
+  currentPassword: string;
+  newPassword: string;
+}) {
+  const result = await query<UserRow>(
+    `
+      SELECT id, username, display_name, email, role, password_hash
+      FROM users
+      WHERE id = $1
+    `,
+    [input.userId],
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error("המשתמש לא נמצא.");
+  }
+
+  if (!bcrypt.compareSync(input.currentPassword, row.password_hash)) {
+    throw new Error("הסיסמה הנוכחית שגויה.");
+  }
+
+  await query("UPDATE users SET password_hash = $1 WHERE id = $2", [
+    bcrypt.hashSync(input.newPassword.trim(), 10),
+    input.userId,
+  ]);
 }
 
 export async function upsertLookup(type: "subjects" | "stages", id: string | null, name: string) {
@@ -341,6 +440,10 @@ export async function createTest(input: {
   studentName?: string;
   studentEmail?: string;
 }) {
+  const durationMinutes = isMissingDuration(input.durationMinutes)
+    ? await getDefaultTestDurationMinutes()
+    : input.durationMinutes!;
+
   const result = await query<{
     id: string;
     text: string;
@@ -408,7 +511,7 @@ export async function createTest(input: {
         input.createdBy,
         input.selectionMode,
         selected.length,
-        input.durationMinutes ?? DEFAULT_DURATION_MINUTES,
+        durationMinutes,
         input.studentName?.trim() || null,
         input.studentEmail?.trim() || null,
       ],
@@ -439,6 +542,25 @@ export async function createTest(input: {
   });
 
   return testId;
+}
+
+export async function updateTestDuration(input: {
+  testId: string;
+  durationMinutes?: number;
+}) {
+  const durationMinutes = isMissingDuration(input.durationMinutes)
+    ? await getDefaultTestDurationMinutes()
+    : input.durationMinutes!;
+
+  await query(
+    `
+      UPDATE tests
+      SET duration_minutes = $1,
+          updated_at = NOW()
+      WHERE id = $2
+    `,
+    [durationMinutes, input.testId],
+  );
 }
 
 export async function getTestById(id: string) {

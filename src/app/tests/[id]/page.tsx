@@ -1,21 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { createShareLinkAction, sendGradeEmailAction } from "@/app/actions";
+import { createShareLinkAction, sendGradeEmailAction, updateTestDurationAction } from "@/app/actions";
 import { requireUser } from "@/lib/auth";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
-import { getTestById } from "@/lib/repository";
+import { getDefaultTestDurationMinutes, getTestById } from "@/lib/repository";
 
 type TestPageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ mail?: string; mailError?: string }>;
+  searchParams: Promise<{ durationSaved?: string; mail?: string; mailError?: string }>;
 };
 
 export default async function TestDetailsPage({ params, searchParams }: TestPageProps) {
   await requireUser();
   const { id } = await params;
   const query = await searchParams;
-  const test = await getTestById(id);
+  const [test, defaultDurationMinutes] = await Promise.all([getTestById(id), getDefaultTestDurationMinutes()]);
 
   if (!test) {
     notFound();
@@ -49,12 +49,13 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
 
       {query.mail === "sent" ? <div className="alert">המייל נשלח בהצלחה.</div> : null}
       {query.mailError ? <div className="alert">{query.mailError}</div> : null}
+      {query.durationSaved ? <div className="alert">משך המבחן עודכן.</div> : null}
 
       <div className="grid grid-2">
         <div className="card">
           <h3>פרטי מבחן</h3>
           <p>שיטת בחירה: {test.selectionMode}</p>
-          <p>משך: {test.durationMinutes} דקות</p>
+          <p>משך: {test.durationMinutes === 0 ? "ללא הגבלת זמן" : `${test.durationMinutes} דקות`}</p>
           <p>נוצר: {new Date(test.createdAt).toLocaleString("he-IL")}</p>
           <p>נשלח: {test.sentAt ? new Date(test.sentAt).toLocaleString("he-IL") : "-"}</p>
           <p>הוגש: {test.submittedAt ? new Date(test.submittedAt).toLocaleString("he-IL") : "-"}</p>
@@ -62,6 +63,23 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
           <p>תלמיד: {test.studentName || "-"}</p>
           <p>מייל: {test.studentEmail || "-"}</p>
           <p>ציון: {test.grade ?? "-"}</p>
+          <form action={updateTestDurationAction}>
+            <input type="hidden" name="testId" value={test.id} />
+            <input type="hidden" name="shareToken" value={test.shareToken ?? ""} />
+            <label>
+              שינוי זמן למבחן הזה
+              <input
+                name="durationMinutes"
+                type="number"
+                min="0"
+                placeholder={`ברירת מחדל מערכתית: ${defaultDurationMinutes}`}
+              />
+            </label>
+            <p className="muted">אם השדה ריק, יוחל שוב זמן ברירת המחדל. אם יוזן 0, לא תהיה מגבלת זמן.</p>
+            <button className="button button-secondary" type="submit">
+              עדכון משך מבחן
+            </button>
+          </form>
           {test.shareUrl ? (
             <div className="hero-banner">
               <strong>קישור ייחודי לתלמיד</strong>

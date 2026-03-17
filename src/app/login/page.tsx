@@ -1,5 +1,5 @@
 import { loginAction } from "@/app/actions";
-import { APP_NAME, DEFAULT_ADMIN, DEFAULT_EDITOR } from "@/lib/constants";
+import { APP_NAME } from "@/lib/constants";
 
 type LoginPageProps = {
   searchParams: Promise<{ error?: string }>;
@@ -14,7 +14,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <div className="page-header">
           <div>
             <h2>{APP_NAME}</h2>
-            <p>מערכת בעברית ו־RTL לניהול שאלות, יצירת מבחנים, שיתוף לתלמידים ובדיקת תשובות.</p>
+            <p>מערכת לניהול וייצור מבחנים</p>
           </div>
         </div>
         {params.error ? <div className="alert">שם המשתמש או הסיסמה אינם תקינים.</div> : null}
@@ -31,15 +31,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             כניסה למערכת
           </button>
         </form>
-        <div className="hero-banner">
-          <strong>משתמשי פתיחה</strong>
-          <p className="muted">
-            אדמין: {DEFAULT_ADMIN.username} / {DEFAULT_ADMIN.password}
-          </p>
-          <p className="muted">
-            עורך: {DEFAULT_EDITOR.username} / {DEFAULT_EDITOR.password}
-          </p>
-        </div>
       </div>
     </div>
   );

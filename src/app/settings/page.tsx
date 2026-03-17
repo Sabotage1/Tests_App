@@ -1,10 +1,31 @@
-import { saveLookupAction, saveUserAction } from "@/app/actions";
+import {
+  changeOwnPasswordAction,
+  saveDefaultDurationAction,
+  saveLookupAction,
+  saveUserAction,
+  updateUserAction,
+} from "@/app/actions";
 import { requireUser } from "@/lib/auth";
-import { getStages, getSubjects, getUsers } from "@/lib/repository";
+import { getDefaultTestDurationMinutes, getStages, getSubjects, getUsers } from "@/lib/repository";
 
-export default async function SettingsPage() {
+type SettingsPageProps = {
+  searchParams: Promise<{
+    durationSaved?: string;
+    passwordSaved?: string;
+    passwordError?: string;
+    userSaved?: string;
+  }>;
+};
+
+export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const user = await requireUser();
-  const [subjects, stages, users] = await Promise.all([getSubjects(), getStages(), getUsers()]);
+  const params = await searchParams;
+  const [subjects, stages, users, defaultDurationMinutes] = await Promise.all([
+    getSubjects(),
+    getStages(),
+    getUsers(),
+    getDefaultTestDurationMinutes(),
+  ]);
 
   return (
     <div className="stack">
@@ -13,6 +34,55 @@ export default async function SettingsPage() {
           <h2>הגדרות</h2>
           <p>ניהול subjects, stages ומשתמשים. לעורך מותר להוסיף ולעדכן נושאים ושלבים.</p>
         </div>
+      </div>
+
+      {params.durationSaved ? <div className="alert">ברירת המחדל למשך מבחן נשמרה.</div> : null}
+      {params.passwordSaved ? <div className="alert">הסיסמה עודכנה בהצלחה.</div> : null}
+      {params.passwordError ? <div className="alert">עדכון הסיסמה נכשל. בדוק את הסיסמה הנוכחית ואת האימות.</div> : null}
+      {params.userSaved ? <div className="alert">פרטי המשתמש נשמרו.</div> : null}
+
+      <div className="card">
+        <h3>ברירת מחדל למשך מבחן</h3>
+        <form action={saveDefaultDurationAction}>
+          <div className="grid grid-2">
+            <label>
+              משך ברירת מחדל בדקות
+              <input
+                name="defaultDurationMinutes"
+                type="number"
+                min="0"
+                defaultValue={defaultDurationMinutes}
+              />
+            </label>
+          </div>
+          <p className="muted">השארת שדה ריק תשאיר את ערך ברירת המחדל הקיים. ערך 0 יגדיר מבחנים ללא מגבלת זמן.</p>
+          <button className="button button-primary" type="submit">
+            שמירת ברירת מחדל
+          </button>
+        </form>
+      </div>
+
+      <div className="card">
+        <h3>שינוי סיסמה</h3>
+        <form action={changeOwnPasswordAction}>
+          <div className="grid grid-3">
+            <label>
+              סיסמה נוכחית
+              <input name="currentPassword" type="password" required />
+            </label>
+            <label>
+              סיסמה חדשה
+              <input name="newPassword" type="password" minLength={6} required />
+            </label>
+            <label>
+              אימות סיסמה חדשה
+              <input name="confirmPassword" type="password" minLength={6} required />
+            </label>
+          </div>
+          <button className="button button-primary" type="submit">
+            עדכון סיסמה
+          </button>
+        </form>
       </div>
 
       <div className="grid grid-2">
@@ -76,59 +146,79 @@ export default async function SettingsPage() {
       </div>
 
       {user.role === "admin" ? (
-        <div className="card">
-          <h3>משתמשים והרשאות</h3>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>שם</th>
-                <th>Username</th>
-                <th>תפקיד</th>
-                <th>מייל</th>
-              </tr>
-            </thead>
-            <tbody>
+        <div className="grid grid-2">
+          <div className="card">
+            <h3>משתמשים קיימים</h3>
+            <div className="stack">
               {users.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.displayName}</td>
-                  <td>{item.username}</td>
-                  <td>{item.role}</td>
-                  <td>{item.email || "-"}</td>
-                </tr>
+                <form key={item.id} action={updateUserAction} className="question-block">
+                  <input type="hidden" name="id" value={item.id} />
+                  <div className="grid grid-3">
+                    <label>
+                      שם תצוגה
+                      <input name="displayName" defaultValue={item.displayName} required />
+                    </label>
+                    <label>
+                      Username
+                      <input name="username" defaultValue={item.username} required />
+                    </label>
+                    <label>
+                      אימייל
+                      <input name="email" type="email" defaultValue={item.email ?? ""} />
+                    </label>
+                    <label>
+                      תפקיד
+                      <select name="role" defaultValue={item.role}>
+                        <option value="editor">Editor</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    </label>
+                    <label>
+                      סיסמה חדשה
+                      <input name="password" type="password" placeholder="להשאיר ריק ללא שינוי" />
+                    </label>
+                  </div>
+                  <button className="button button-secondary" type="submit">
+                    שמירת משתמש
+                  </button>
+                </form>
               ))}
-            </tbody>
-          </table>
-
-          <form action={saveUserAction}>
-            <div className="grid grid-3">
-              <label>
-                שם תצוגה
-                <input name="displayName" required />
-              </label>
-              <label>
-                Username
-                <input name="username" required />
-              </label>
-              <label>
-                אימייל
-                <input name="email" type="email" />
-              </label>
-              <label>
-                תפקיד
-                <select name="role" defaultValue="editor">
-                  <option value="editor">Editor</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </label>
-              <label>
-                סיסמה
-                <input name="password" type="password" required />
-              </label>
             </div>
-            <button className="button button-primary" type="submit">
-              הוספת משתמש
-            </button>
-          </form>
+          </div>
+
+          <div className="card">
+            <h3>הוספת משתמש</h3>
+            <form action={saveUserAction}>
+              <div className="grid grid-3">
+                <label>
+                  שם תצוגה
+                  <input name="displayName" required />
+                </label>
+                <label>
+                  Username
+                  <input name="username" required />
+                </label>
+                <label>
+                  אימייל
+                  <input name="email" type="email" />
+                </label>
+                <label>
+                  תפקיד
+                  <select name="role" defaultValue="editor">
+                    <option value="editor">Editor</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </label>
+                <label>
+                  סיסמה
+                  <input name="password" type="password" minLength={6} required />
+                </label>
+              </div>
+              <button className="button button-primary" type="submit">
+                הוספת משתמש
+              </button>
+            </form>
+          </div>
         </div>
       ) : null}
     </div>

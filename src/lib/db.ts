@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 
-import { DEFAULT_ADMIN, DEFAULT_EDITOR } from "@/lib/constants";
+import { DEFAULT_ADMIN, DEFAULT_DURATION_MINUTES, DEFAULT_EDITOR } from "@/lib/constants";
 import { getSeedQuestions, getSeedStages, getSeedSubjects } from "@/lib/seed";
 
 declare global {
@@ -116,6 +116,12 @@ async function createSchema(client: PoolClient) {
       score NUMERIC(5,2),
       feedback TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
   `);
 }
 
@@ -213,6 +219,17 @@ async function seedQuestions(client: PoolClient) {
   }
 }
 
+async function seedSettings(client: PoolClient) {
+  await client.query(
+    `
+      INSERT INTO app_settings (key, value, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (key) DO NOTHING
+    `,
+    ["default_test_duration_minutes", String(DEFAULT_DURATION_MINUTES)],
+  );
+}
+
 async function initializeDatabase() {
   const pool = getPool();
   const client = await pool.connect();
@@ -224,6 +241,7 @@ async function initializeDatabase() {
     await seedLookupTable(client, "subjects", getSeedSubjects());
     await seedLookupTable(client, "stages", getSeedStages());
     await seedQuestions(client);
+    await seedSettings(client);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");

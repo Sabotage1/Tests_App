@@ -34,7 +34,11 @@ export default async function SharePage({ params, searchParams }: SharePageProps
       <div className="login-wrap">
         <div className="card login-card">
           <h2>{test.title}</h2>
-          <p>משך המבחן הוא {test.durationMinutes} דקות. הלחיצה על התחלה תפעיל את הטיימר.</p>
+          <p>
+            {test.durationMinutes === 0
+              ? "למבחן זה אין מגבלת זמן."
+              : `משך המבחן הוא ${test.durationMinutes} דקות. הלחיצה על התחלה תפעיל את הטיימר.`}
+          </p>
           <form action={startSharedTestAction}>
             <input type="hidden" name="token" value={token} />
             <label>
@@ -54,16 +58,23 @@ export default async function SharePage({ params, searchParams }: SharePageProps
     );
   }
 
-  const deadline = new Date(new Date(test.startedAt).getTime() + test.durationMinutes * 60 * 1000).toISOString();
+  const deadline =
+    test.durationMinutes === 0
+      ? null
+      : new Date(new Date(test.startedAt).getTime() + test.durationMinutes * 60 * 1000).toISOString();
 
   return (
     <div className="content" style={{ maxWidth: 960, margin: "0 auto" }}>
       <div className="page-header">
         <div>
           <h2>{test.title}</h2>
-          <p>יש להשיב על כל השאלות ולהגיש עד סיום הטיימר.</p>
+          <p>
+            {deadline
+              ? "יש להשיב על כל השאלות ולהגיש עד סיום הטיימר."
+              : "זהו מבחן ללא מגבלת זמן. ניתן להגיש כשתסיים."}
+          </p>
         </div>
-        <CountdownTimer deadlineIso={deadline} formId="student-test-form" />
+        {deadline ? <CountdownTimer deadlineIso={deadline} formId="student-test-form" /> : null}
       </div>
       <form action={submitSharedTestAction} id="student-test-form">
         <input type="hidden" name="token" value={token} />

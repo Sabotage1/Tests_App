@@ -7,13 +7,18 @@ import { clearSession, createSession, requireAdmin, requireUser } from "@/lib/au
 import {
   archiveQuestion,
   authenticateUser,
+  changeUserPassword,
   createTest,
   createUser,
   ensureShareToken,
   gradeTest,
+  getDefaultTestDurationMinutes,
   sendGradeEmail,
+  setDefaultTestDurationMinutes,
   startTestByToken,
   submitTestByToken,
+  updateUser,
+  updateTestDuration,
   upsertLookup,
   upsertQuestion,
 } from "@/lib/repository";
@@ -106,8 +111,62 @@ export async function saveUserAction(formData: FormData) {
   redirect("/settings");
 }
 
+export async function updateUserAction(formData: FormData) {
+  await requireAdmin();
+
+  await updateUser({
+    id: formData.get("id")?.toString() ?? "",
+    username: formData.get("username")?.toString() ?? "",
+    displayName: formData.get("displayName")?.toString() ?? "",
+    email: formData.get("email")?.toString() ?? "",
+    role: (formData.get("role")?.toString() ?? "editor") as "admin" | "editor",
+    password: formData.get("password")?.toString() ?? "",
+  });
+
+  revalidatePath("/settings");
+  redirect("/settings?userSaved=1");
+}
+
+export async function changeOwnPasswordAction(formData: FormData) {
+  const user = await requireUser();
+  const currentPassword = formData.get("currentPassword")?.toString() ?? "";
+  const newPassword = formData.get("newPassword")?.toString() ?? "";
+  const confirmPassword = formData.get("confirmPassword")?.toString() ?? "";
+
+  if (newPassword !== confirmPassword) {
+    redirect("/settings?passwordError=1");
+  }
+
+  try {
+    await changeUserPassword({
+      userId: user.id,
+      currentPassword,
+      newPassword,
+    });
+  } catch {
+    redirect("/settings?passwordError=1");
+  }
+
+  revalidatePath("/settings");
+  redirect("/settings?passwordSaved=1");
+}
+
+export async function saveDefaultDurationAction(formData: FormData) {
+  await requireUser();
+
+  const rawValue = formData.get("defaultDurationMinutes")?.toString().trim() ?? "";
+  const currentDefault = await getDefaultTestDurationMinutes();
+  const durationMinutes = rawValue === "" ? currentDefault : Number(rawValue);
+
+  await setDefaultTestDurationMinutes(Number.isNaN(durationMinutes) ? currentDefault : durationMinutes);
+  revalidatePath("/settings");
+  revalidatePath("/tests/new");
+  redirect("/settings?durationSaved=1");
+}
+
 export async function createTestAction(formData: FormData) {
   const user = await requireUser();
+  const rawDuration = formData.get("durationMinutes")?.toString().trim() ?? "";
 
   try {
     const id = await createTest({
@@ -115,7 +174,7 @@ export async function createTestAction(formData: FormData) {
       createdBy: user.id,
       selectionMode: (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered",
       questionCount: Number(formData.get("questionCount")?.toString() ?? "0"),
-      durationMinutes: Number(formData.get("durationMinutes")?.toString() ?? "90"),
+      durationMinutes: rawDuration === "" ? undefined : Number(rawDuration),
       subjectIds: getMany(formData, "subjectIds"),
       stageIds: getMany(formData, "stageIds"),
       studentName: formData.get("studentName")?.toString() ?? "",
@@ -137,6 +196,24 @@ export async function createShareLinkAction(formData: FormData) {
   revalidatePath(`/tests/${id}`);
   revalidatePath("/dashboard");
   redirect(`/tests/${id}`);
+}
+
+export async function updateTestDurationAction(formData: FormData) {
+  await requireUser();
+  const testId = formData.get("testId")?.toString() ?? "";
+  const shareToken = formData.get("shareToken")?.toString() ?? "";
+  const rawValue = formData.get("durationMinutes")?.toString().trim() ?? "";
+
+  await updateTestDuration({
+    testId,
+    durationMinutes: rawValue === "" ? undefined : Number(rawValue),
+  });
+
+  revalidatePath(`/tests/${testId}`);
+  if (shareToken) {
+    revalidatePath(`/share/${shareToken}`);
+  }
+  redirect(`/tests/${testId}?durationSaved=1`);
 }
 
 export async function startSharedTestAction(formData: FormData) {

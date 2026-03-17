@@ -1,7 +1,6 @@
 import { createTestAction } from "@/app/actions";
 import { requireUser } from "@/lib/auth";
-import { DEFAULT_DURATION_MINUTES } from "@/lib/constants";
-import { getStages, getSubjects } from "@/lib/repository";
+import { getDefaultTestDurationMinutes, getStages, getSubjects } from "@/lib/repository";
 
 type NewTestPageProps = {
   searchParams: Promise<{ error?: string }>;
@@ -10,7 +9,11 @@ type NewTestPageProps = {
 export default async function NewTestPage({ searchParams }: NewTestPageProps) {
   await requireUser();
   const params = await searchParams;
-  const [subjects, stages] = await Promise.all([getSubjects(), getStages()]);
+  const [subjects, stages, defaultDurationMinutes] = await Promise.all([
+    getSubjects(),
+    getStages(),
+    getDefaultTestDurationMinutes(),
+  ]);
 
   return (
     <div className="stack">
@@ -34,7 +37,12 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
             </label>
             <label>
               משך זמן בדקות
-              <input name="durationMinutes" type="number" min="30" defaultValue={DEFAULT_DURATION_MINUTES} required />
+              <input
+                name="durationMinutes"
+                type="number"
+                min="0"
+                placeholder={`ברירת מחדל: ${defaultDurationMinutes}`}
+              />
             </label>
             <label>
               שיטת בחירה
@@ -76,6 +84,9 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
               ))}
             </div>
           </div>
+          <p className="muted">
+            אם לא יוזן זמן, יילקח ערך ברירת המחדל מהמערכת. אם יוזן 0, למבחן לא תהיה מגבלת זמן.
+          </p>
 
           <button className="button button-primary" type="submit">
             יצירת מבחן
