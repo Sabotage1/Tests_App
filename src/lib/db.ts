@@ -97,6 +97,7 @@ async function createSchema(client: PoolClient) {
       started_at TIMESTAMPTZ,
       submitted_at TIMESTAMPTZ,
       graded_at TIMESTAMPTZ,
+      graded_by_name TEXT,
       grade NUMERIC(5,2),
       grading_notes TEXT,
       created_at TIMESTAMPTZ NOT NULL,
@@ -122,6 +123,8 @@ async function createSchema(client: PoolClient) {
       value TEXT NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
     );
+
+    ALTER TABLE tests ADD COLUMN IF NOT EXISTS graded_by_name TEXT;
   `);
 }
 

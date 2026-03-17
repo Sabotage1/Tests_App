@@ -56,7 +56,7 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
             ייצוא ל־PDF
           </Link>
           <Link className="button button-secondary" href={`/tests/${test.id}/grade`}>
-            בדיקה וציונים
+            {test.status === "graded" ? "צפייה / עריכת בדיקה" : "בדיקה וציונים"}
           </Link>
         </div>
       </div>
@@ -76,6 +76,7 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
           <p>הוגש: {test.submittedAt ? new Date(test.submittedAt).toLocaleString("he-IL") : "-"}</p>
           <p>משך פתרון בפועל: {solvedMinutes !== null ? `${solvedMinutes} דקות` : "-"}</p>
           <p>נבדק: {test.gradedAt ? new Date(test.gradedAt).toLocaleString("he-IL") : "-"}</p>
+          <p>בודק: {test.gradedByName || "-"}</p>
           <p>תלמיד: {test.studentName || "-"}</p>
           <p>מייל: {test.studentEmail || "-"}</p>
           <p>ציון: {test.grade ?? "-"}</p>

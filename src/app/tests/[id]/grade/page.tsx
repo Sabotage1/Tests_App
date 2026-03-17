@@ -49,6 +49,9 @@ export default async function GradePage({ params, searchParams }: GradePageProps
           <p className="muted">
             ציון סופי מחושב כסכום עד 100. כל שאלה שווה עד {maxPerQuestion} נקודות במבחן הזה.
           </p>
+          {test.status === "graded" ? (
+            <p className="muted">הבדיקה כבר נשמרה בעבר וניתן לערוך אותה מחדש במקרה של ערעור ולשמור שוב.</p>
+          ) : null}
         </div>
         <form action={gradeTestWithAiAction}>
           <input type="hidden" name="testId" value={test.id} />

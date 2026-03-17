@@ -68,6 +68,7 @@ export type TestDetails = {
   startedAt: string | null;
   submittedAt: string | null;
   gradedAt: string | null;
+  gradedByName: string | null;
   grade: number | null;
   gradingNotes: string | null;
   studentName: string | null;

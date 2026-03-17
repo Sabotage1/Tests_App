@@ -78,7 +78,7 @@ function getResponseText(payload: unknown) {
   return "";
 }
 
-export async function gradeTestWithAi(testId: string) {
+export async function gradeTestWithAi(testId: string, gradedByName: string) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("יש להגדיר GEMINI_API_KEY כדי להשתמש בבדיקת AI.");
@@ -169,6 +169,7 @@ export async function gradeTestWithAi(testId: string) {
 
   await gradeTest({
     testId,
+    gradedByName,
     gradingNotes: parsed.gradingNotes,
     grades,
   });

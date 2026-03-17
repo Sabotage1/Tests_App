@@ -588,6 +588,7 @@ export async function getTestById(id: string) {
     started_at: string | null;
     submitted_at: string | null;
     graded_at: string | null;
+    graded_by_name: string | null;
     grade: string | null;
     grading_notes: string | null;
     student_name: string | null;
@@ -609,6 +610,7 @@ export async function getTestById(id: string) {
         t.started_at::text,
         t.submitted_at::text,
         t.graded_at::text,
+        t.graded_by_name,
         t.grade::text,
         t.grading_notes,
         t.student_name,
@@ -670,6 +672,7 @@ export async function getTestById(id: string) {
     startedAt: test.started_at,
     submittedAt: test.submitted_at,
     gradedAt: test.graded_at,
+    gradedByName: test.graded_by_name,
     grade: test.grade ? Number(test.grade) : null,
     gradingNotes: test.grading_notes,
     studentName: test.student_name,
@@ -766,6 +769,7 @@ export async function submitTestByToken(input: {
 
 export async function gradeTest(input: {
   testId: string;
+  gradedByName: string;
   gradingNotes?: string;
   grades: Array<{ id: string; score: number; feedback: string }>;
 }) {
@@ -796,11 +800,12 @@ export async function gradeTest(input: {
         SET status = 'graded',
             grade = $1,
             grading_notes = $2,
+            graded_by_name = $3,
             graded_at = NOW(),
             updated_at = NOW()
-        WHERE id = $3
+        WHERE id = $4
       `,
-      [finalGrade, input.gradingNotes?.trim() || null, input.testId],
+      [finalGrade, input.gradingNotes?.trim() || null, input.gradedByName.trim(), input.testId],
     );
   });
 }

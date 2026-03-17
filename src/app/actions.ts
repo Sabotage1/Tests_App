@@ -249,7 +249,7 @@ export async function submitSharedTestAction(formData: FormData) {
 }
 
 export async function gradeTestAction(formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
 
   const testId = formData.get("testId")?.toString() ?? "";
   const ids = getMany(formData, "questionIds");
@@ -261,6 +261,7 @@ export async function gradeTestAction(formData: FormData) {
 
   await gradeTest({
     testId,
+    gradedByName: user.displayName,
     gradingNotes: formData.get("gradingNotes")?.toString() ?? "",
     grades,
   });
@@ -270,11 +271,11 @@ export async function gradeTestAction(formData: FormData) {
 }
 
 export async function gradeTestWithAiAction(formData: FormData) {
-  await requireUser();
+  const user = await requireUser();
   const testId = formData.get("testId")?.toString() ?? "";
 
   try {
-    await gradeTestWithAi(testId);
+    await gradeTestWithAi(testId, user.displayName);
   } catch (error) {
     const message = error instanceof Error ? error.message : "בדיקת AI נכשלה";
     redirect(`/tests/${testId}/grade?aiError=${encodeURIComponent(message)}`);
