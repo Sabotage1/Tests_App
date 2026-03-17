@@ -52,12 +52,16 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
               </select>
             </label>
             <label>
-              שם תלמיד
+              שם נבחן
               <input name="studentName" placeholder="אופציונלי" />
             </label>
             <label>
               מייל תלמיד
               <input name="studentEmail" type="email" placeholder="אופציונלי" />
+            </label>
+            <label>
+              תאריך ושעת שליחה
+              <input name="sentAt" type="datetime-local" />
             </label>
           </div>
 

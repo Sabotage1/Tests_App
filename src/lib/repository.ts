@@ -435,6 +435,7 @@ export async function createTest(input: {
   selectionMode: "random" | "filtered";
   questionCount: number;
   durationMinutes?: number;
+  sentAt?: string;
   subjectIds: string[];
   stageIds: string[];
   studentName?: string;
@@ -501,9 +502,9 @@ export async function createTest(input: {
       `
         INSERT INTO tests (
           id, title, created_by, status, selection_mode, question_count, duration_minutes,
-          student_name, student_email, created_at, updated_at
+          student_name, student_email, sent_at, created_at, updated_at
         )
-        VALUES ($1, $2, $3, 'generated', $4, $5, $6, $7, $8, NOW(), NOW())
+        VALUES ($1, $2, $3, 'generated', $4, $5, $6, $7, $8, $9, NOW(), NOW())
       `,
       [
         testId,
@@ -514,6 +515,7 @@ export async function createTest(input: {
         durationMinutes,
         input.studentName?.trim() || null,
         input.studentEmail?.trim() || null,
+        input.sentAt?.trim() || null,
       ],
     );
 

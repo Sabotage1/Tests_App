@@ -167,26 +167,28 @@ export async function saveDefaultDurationAction(formData: FormData) {
 export async function createTestAction(formData: FormData) {
   const user = await requireUser();
   const rawDuration = formData.get("durationMinutes")?.toString().trim() ?? "";
+  let id = "";
 
   try {
-    const id = await createTest({
+    id = await createTest({
       title: formData.get("title")?.toString() ?? "",
       createdBy: user.id,
       selectionMode: (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered",
       questionCount: Number(formData.get("questionCount")?.toString() ?? "0"),
       durationMinutes: rawDuration === "" ? undefined : Number(rawDuration),
+      sentAt: formData.get("sentAt")?.toString() ?? "",
       subjectIds: getMany(formData, "subjectIds"),
       stageIds: getMany(formData, "stageIds"),
       studentName: formData.get("studentName")?.toString() ?? "",
       studentEmail: formData.get("studentEmail")?.toString() ?? "",
     });
-
-    revalidatePath("/dashboard");
-    redirect(`/tests/${id}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "יצירת המבחן נכשלה";
     redirect(`/tests/new?error=${encodeURIComponent(message)}`);
   }
+
+  revalidatePath("/dashboard");
+  redirect(`/tests/${id}`);
 }
 
 export async function createShareLinkAction(formData: FormData) {
