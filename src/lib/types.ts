@@ -34,6 +34,9 @@ export type TestListItem = {
   status: TestStatus;
   createdAt: string;
   updatedAt: string;
+  sentAt: string | null;
+  startedAt: string | null;
+  submittedAt: string | null;
   questionCount: number;
   creatorName: string;
   studentName: string | null;
@@ -83,4 +86,5 @@ export type DashboardStats = {
   sent: number;
   completed: number;
   graded: number;
+  failed: number;
 };

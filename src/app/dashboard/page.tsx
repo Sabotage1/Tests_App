@@ -64,6 +64,10 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <span>מבחנים שנבדקו</span>
           <strong>{stats.graded}</strong>
         </div>
+        <div className="card stat card-failed">
+          <span>מבחנים שנכשלו</span>
+          <strong>{stats.failed}</strong>
+        </div>
       </div>
 
       <div className="card">

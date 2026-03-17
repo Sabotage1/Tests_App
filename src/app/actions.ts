@@ -9,6 +9,7 @@ import {
   archiveQuestion,
   authenticateUser,
   changeUserPassword,
+  cloneTestForNewStudent,
   createTest,
   createUser,
   ensureShareToken,
@@ -200,6 +201,29 @@ export async function createShareLinkAction(formData: FormData) {
   revalidatePath(`/tests/${id}`);
   revalidatePath("/dashboard");
   redirect(`/tests/${id}`);
+}
+
+export async function resendArchivedTestAction(formData: FormData) {
+  const user = await requireUser();
+  const sourceTestId = formData.get("sourceTestId")?.toString() ?? "";
+
+  try {
+    const newTestId = await cloneTestForNewStudent({
+      sourceTestId,
+      createdBy: user.id,
+      studentName: formData.get("studentName")?.toString() ?? "",
+      studentEmail: formData.get("studentEmail")?.toString() ?? "",
+      sentAt: formData.get("sentAt")?.toString() ?? "",
+    });
+
+    await ensureShareToken(newTestId);
+    revalidatePath("/tests/archive");
+    revalidatePath("/dashboard");
+    redirect(`/tests/${newTestId}?reused=1`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "שכפול המבחן נכשל";
+    redirect(`/tests/archive?error=${encodeURIComponent(message)}`);
+  }
 }
 
 export async function updateTestDurationAction(formData: FormData) {

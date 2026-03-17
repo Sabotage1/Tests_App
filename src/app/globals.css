@@ -134,6 +134,11 @@ a {
   color: white;
 }
 
+.card-failed {
+  background: #fff0f0;
+  border-color: #f3b8b8;
+}
+
 .stat {
   display: flex;
   flex-direction: column;

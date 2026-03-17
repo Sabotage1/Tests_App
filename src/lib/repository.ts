@@ -364,12 +364,17 @@ export async function archiveQuestion(id: string) {
 }
 
 export async function getDashboardStats() {
-  const [questionsResult, testsResult] = await Promise.all([
+  const [questionsResult, testsResult, failedResult] = await Promise.all([
     query<{ count: string }>("SELECT COUNT(*)::text AS count FROM questions WHERE is_active = TRUE"),
     query<{ status: string; count: string }>(`
       SELECT status, COUNT(*)::text AS count
       FROM tests
       GROUP BY status
+    `),
+    query<{ count: string }>(`
+      SELECT COUNT(*)::text AS count
+      FROM tests
+      WHERE status = 'graded' AND grade < 60
     `),
   ]);
 
@@ -381,6 +386,7 @@ export async function getDashboardStats() {
     sent: statsMap.get("sent") ?? 0,
     completed: statsMap.get("completed") ?? 0,
     graded: statsMap.get("graded") ?? 0,
+    failed: Number(failedResult.rows[0]?.count ?? 0),
   };
 
   return stats;
@@ -393,6 +399,9 @@ export async function getTests() {
     status: TestListItem["status"];
     created_at: string;
     updated_at: string;
+    sent_at: string | null;
+    started_at: string | null;
+    submitted_at: string | null;
     question_count: number;
     creator_name: string;
     student_name: string | null;
@@ -405,6 +414,9 @@ export async function getTests() {
       t.status,
       t.created_at::text,
       t.updated_at::text,
+      t.sent_at::text,
+      t.started_at::text,
+      t.submitted_at::text,
       t.question_count,
       u.display_name AS creator_name,
       t.student_name,
@@ -421,6 +433,9 @@ export async function getTests() {
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    sentAt: row.sent_at,
+    startedAt: row.started_at,
+    submittedAt: row.submitted_at,
     questionCount: row.question_count,
     creatorName: row.creator_name,
     studentName: row.student_name,
@@ -552,6 +567,67 @@ export async function createTest(input: {
   });
 
   return testId;
+}
+
+export async function cloneTestForNewStudent(input: {
+  sourceTestId: string;
+  createdBy: string;
+  studentName?: string;
+  studentEmail?: string;
+  sentAt?: string;
+}) {
+  const sourceTest = await getTestById(input.sourceTestId);
+  if (!sourceTest) {
+    throw new Error("המבחן המקורי לא נמצא.");
+  }
+
+  const newTestId = nanoid();
+
+  await withTransaction(async (client) => {
+    await client.query(
+      `
+        INSERT INTO tests (
+          id, title, created_by, status, selection_mode, question_count, duration_minutes,
+          student_name, student_email, sent_at, created_at, updated_at
+        )
+        VALUES ($1, $2, $3, 'generated', $4, $5, $6, $7, $8, $9, NOW(), NOW())
+      `,
+      [
+        newTestId,
+        sourceTest.title,
+        input.createdBy,
+        "archived_copy",
+        sourceTest.questionCount,
+        sourceTest.durationMinutes,
+        input.studentName?.trim() || null,
+        input.studentEmail?.trim() || null,
+        input.sentAt?.trim() || null,
+      ],
+    );
+
+    for (const question of sourceTest.questions) {
+      await client.query(
+        `
+          INSERT INTO test_questions (
+            id, test_id, question_id, order_index, prompt, expected_answer, subject_names, stage_names
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `,
+        [
+          nanoid(),
+          newTestId,
+          null,
+          question.orderIndex,
+          question.prompt,
+          question.expectedAnswer,
+          question.subjectNames,
+          question.stageNames,
+        ],
+      );
+    }
+  });
+
+  return newTestId;
 }
 
 export async function updateTestDuration(input: {
