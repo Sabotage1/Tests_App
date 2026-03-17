@@ -191,6 +191,7 @@ export async function createTestAction(formData: FormData) {
   }
 
   revalidatePath("/dashboard");
+  revalidatePath("/tests/library");
   redirect(`/tests/${id}`);
 }
 
@@ -218,6 +219,7 @@ export async function resendArchivedTestAction(formData: FormData) {
 
     await ensureShareToken(newTestId);
     revalidatePath("/tests/archive");
+    revalidatePath("/tests/library");
     revalidatePath("/dashboard");
     redirect(`/tests/${newTestId}?reused=1`);
   } catch (error) {

@@ -33,6 +33,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <nav className="nav">
                 <Link href="/dashboard">דשבורד</Link>
                 <Link href="/questions">מאגר שאלות</Link>
+                <Link href="/tests/library">מאגר מבחנים</Link>
                 <Link href="/tests/review">בדיקת מבחנים</Link>
                 <Link href="/tests/archive">ארכיון מבחנים</Link>
                 <Link href="/tests/new">יצירת מבחן</Link>

@@ -24,6 +24,10 @@ function getSolvedMinutes(startedAt: string | null, submittedAt: string | null) 
   return Math.ceil(difference / 60000);
 }
 
+function formatRoundedGrade(grade: number | null) {
+  return grade === null ? "-" : Math.round(grade);
+}
+
 export default async function TestDetailsPage({ params, searchParams }: TestPageProps) {
   await requireUser();
   const { id } = await params;
@@ -79,7 +83,7 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
           <p>בודק: {test.gradedByName || "-"}</p>
           <p>תלמיד: {test.studentName || "-"}</p>
           <p>מייל: {test.studentEmail || "-"}</p>
-          <p>ציון: {test.grade ?? "-"}</p>
+          <p>ציון: {formatRoundedGrade(test.grade)}</p>
           <form action={updateTestDurationAction}>
             <input type="hidden" name="testId" value={test.id} />
             <input type="hidden" name="shareToken" value={test.shareToken ?? ""} />
