@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: atc-tests-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: atc_tests
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "55432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:

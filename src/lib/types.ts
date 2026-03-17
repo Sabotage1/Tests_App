@@ -1,0 +1,85 @@
+import type { TestStatus, UserRole } from "@/lib/constants";
+
+export type User = {
+  id: string;
+  username: string;
+  displayName: string;
+  email: string | null;
+  role: UserRole;
+};
+
+export type Option = {
+  label: string;
+  value: string;
+};
+
+export type QuestionRow = {
+  id: string;
+  text: string;
+  answer: string;
+  questionType: string;
+  source: string;
+  sourceReference: string | null;
+  subjectIds: string[];
+  stageIds: string[];
+  subjectNames: string[];
+  stageNames: string[];
+  updatedAt: string;
+  isActive: number;
+};
+
+export type TestListItem = {
+  id: string;
+  title: string;
+  status: TestStatus;
+  createdAt: string;
+  updatedAt: string;
+  questionCount: number;
+  creatorName: string;
+  studentName: string | null;
+  studentEmail: string | null;
+  grade: number | null;
+};
+
+export type TestQuestion = {
+  id: string;
+  orderIndex: number;
+  prompt: string;
+  expectedAnswer: string;
+  studentAnswer: string | null;
+  score: number | null;
+  feedback: string | null;
+  subjectNames: string[];
+  stageNames: string[];
+};
+
+export type TestDetails = {
+  id: string;
+  title: string;
+  status: TestStatus;
+  selectionMode: string;
+  questionCount: number;
+  durationMinutes: number;
+  shareToken: string | null;
+  shareUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+  sentAt: string | null;
+  startedAt: string | null;
+  submittedAt: string | null;
+  gradedAt: string | null;
+  grade: number | null;
+  gradingNotes: string | null;
+  studentName: string | null;
+  studentEmail: string | null;
+  creatorName: string;
+  questions: TestQuestion[];
+};
+
+export type DashboardStats = {
+  questions: number;
+  generated: number;
+  sent: number;
+  completed: number;
+  graded: number;
+};
