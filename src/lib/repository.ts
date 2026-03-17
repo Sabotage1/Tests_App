@@ -762,20 +762,25 @@ export async function gradeTest(input: {
   grades: Array<{ id: string; score: number; feedback: string }>;
 }) {
   await withTransaction(async (client) => {
+    const countResult = await client.query<{ count: string }>(
+      "SELECT COUNT(*)::text AS count FROM test_questions WHERE test_id = $1",
+      [input.testId],
+    );
+    const questionCount = Number(countResult.rows[0]?.count ?? 0);
+    const maxPerQuestion = questionCount > 0 ? 100 / questionCount : 0;
     let total = 0;
-    let count = 0;
 
     for (const grade of input.grades) {
-      total += grade.score;
-      count += 1;
+      const safeScore = Math.min(maxPerQuestion, Math.max(0, Number.isNaN(grade.score) ? 0 : grade.score));
+      total += safeScore;
       await client.query("UPDATE test_questions SET score = $1, feedback = $2 WHERE id = $3", [
-        grade.score,
+        Number(safeScore.toFixed(2)),
         grade.feedback.trim() || null,
         grade.id,
       ]);
     }
 
-    const average = count ? Number((total / count).toFixed(2)) : 0;
+    const finalGrade = Number(Math.min(100, total).toFixed(2));
 
     await client.query(
       `
@@ -787,7 +792,7 @@ export async function gradeTest(input: {
             updated_at = NOW()
         WHERE id = $3
       `,
-      [average, input.gradingNotes?.trim() || null, input.testId],
+      [finalGrade, input.gradingNotes?.trim() || null, input.testId],
     );
   });
 }

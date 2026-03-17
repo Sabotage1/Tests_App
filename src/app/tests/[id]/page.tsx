@@ -11,11 +11,25 @@ type TestPageProps = {
   searchParams: Promise<{ durationSaved?: string; mail?: string; mailError?: string }>;
 };
 
+function getSolvedMinutes(startedAt: string | null, submittedAt: string | null) {
+  if (!startedAt || !submittedAt) {
+    return null;
+  }
+
+  const difference = new Date(submittedAt).getTime() - new Date(startedAt).getTime();
+  if (difference <= 0) {
+    return 0;
+  }
+
+  return Math.ceil(difference / 60000);
+}
+
 export default async function TestDetailsPage({ params, searchParams }: TestPageProps) {
   await requireUser();
   const { id } = await params;
   const query = await searchParams;
   const [test, defaultDurationMinutes] = await Promise.all([getTestById(id), getDefaultTestDurationMinutes()]);
+  const solvedMinutes = test ? getSolvedMinutes(test.startedAt, test.submittedAt) : null;
 
   if (!test) {
     notFound();
@@ -58,7 +72,9 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
           <p>משך: {test.durationMinutes === 0 ? "ללא הגבלת זמן" : `${test.durationMinutes} דקות`}</p>
           <p>נוצר: {new Date(test.createdAt).toLocaleString("he-IL")}</p>
           <p>נשלח: {test.sentAt ? new Date(test.sentAt).toLocaleString("he-IL") : "-"}</p>
+          <p>התחיל: {test.startedAt ? new Date(test.startedAt).toLocaleString("he-IL") : "-"}</p>
           <p>הוגש: {test.submittedAt ? new Date(test.submittedAt).toLocaleString("he-IL") : "-"}</p>
+          <p>משך פתרון בפועל: {solvedMinutes !== null ? `${solvedMinutes} דקות` : "-"}</p>
           <p>נבדק: {test.gradedAt ? new Date(test.gradedAt).toLocaleString("he-IL") : "-"}</p>
           <p>תלמיד: {test.studentName || "-"}</p>
           <p>מייל: {test.studentEmail || "-"}</p>

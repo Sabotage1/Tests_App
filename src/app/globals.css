@@ -279,6 +279,19 @@ textarea {
   gap: 18px;
 }
 
+.grade-split {
+  direction: ltr;
+}
+
+.grade-panel {
+  direction: rtl;
+}
+
+.expected-answer {
+  background: #e8f8ee;
+  border-color: #9fd5b1;
+}
+
 .alert {
   padding: 14px 16px;
   border-radius: 16px;

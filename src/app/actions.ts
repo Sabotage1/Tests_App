@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { clearSession, createSession, requireAdmin, requireUser } from "@/lib/auth";
+import { gradeTestWithAi } from "@/lib/ai-grading";
 import {
   archiveQuestion,
   authenticateUser,
@@ -265,6 +266,22 @@ export async function gradeTestAction(formData: FormData) {
 
   revalidatePath(`/tests/${testId}`);
   redirect(`/tests/${testId}`);
+}
+
+export async function gradeTestWithAiAction(formData: FormData) {
+  await requireUser();
+  const testId = formData.get("testId")?.toString() ?? "";
+
+  try {
+    await gradeTestWithAi(testId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "בדיקת AI נכשלה";
+    redirect(`/tests/${testId}/grade?aiError=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath(`/tests/${testId}`);
+  revalidatePath(`/tests/${testId}/grade`);
+  redirect(`/tests/${testId}/grade?aiSaved=1`);
 }
 
 export async function sendGradeEmailAction(formData: FormData) {
