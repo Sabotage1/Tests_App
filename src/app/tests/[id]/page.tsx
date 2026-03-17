@@ -8,7 +8,7 @@ import { getDefaultTestDurationMinutes, getTestById } from "@/lib/repository";
 
 type TestPageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ durationSaved?: string; mail?: string; mailError?: string }>;
+  searchParams: Promise<{ durationSaved?: string; mail?: string; mailError?: string; reused?: string }>;
 };
 
 function getSolvedMinutes(startedAt: string | null, submittedAt: string | null) {
@@ -52,10 +52,10 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
           <form action={createShareLinkAction}>
             <input type="hidden" name="id" value={test.id} />
             <button className="button button-primary" type="submit">
-              יצירת / רענון קישור מבחן
+              {test.shareUrl ? "רענון קישור מבחן" : "יצירת קישור מבחן"}
             </button>
           </form>
-          {test.shareUrl ? <CopyLinkButton path={test.shareUrl} /> : null}
+          {test.shareUrl ? <CopyLinkButton path={test.shareUrl} autoCopy={query.reused === "1"} /> : null}
           <Link className="button button-secondary" href={`/print/tests/${test.id}`} target="_blank">
             ייצוא ל־PDF
           </Link>
@@ -68,6 +68,7 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
       {query.mail === "sent" ? <div className="alert">המייל נשלח בהצלחה.</div> : null}
       {query.mailError ? <div className="alert">{query.mailError}</div> : null}
       {query.durationSaved ? <div className="alert">משך המבחן עודכן.</div> : null}
+      {query.reused === "1" ? <div className="alert">נוצר מבחן חדש והקישור לתלמיד הועתק אוטומטית.</div> : null}
 
       <div className="grid grid-2">
         <div className="card">

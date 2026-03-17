@@ -28,6 +28,7 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
   await requireUser();
   const params = await searchParams;
   const tests = await getTests();
+  const reusableTests = tests.filter((test) => test.selectionMode !== "archived_copy");
 
   return (
     <div className="stack">
@@ -53,7 +54,7 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
             </tr>
           </thead>
           <tbody>
-            {tests.map((test) => (
+            {reusableTests.map((test) => (
               <tr key={test.id}>
                 <td>
                   <strong>{test.title}</strong>
@@ -98,7 +99,7 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
                 </td>
               </tr>
             ))}
-            {tests.length === 0 ? (
+            {reusableTests.length === 0 ? (
               <tr>
                 <td colSpan={7}>עדיין לא נוצרו מבחנים במערכת.</td>
               </tr>

@@ -397,6 +397,7 @@ export async function getTests() {
     id: string;
     title: string;
     status: TestListItem["status"];
+    selection_mode: string;
     created_at: string;
     updated_at: string;
     sent_at: string | null;
@@ -412,6 +413,7 @@ export async function getTests() {
       t.id,
       t.title,
       t.status,
+      t.selection_mode,
       t.created_at::text,
       t.updated_at::text,
       t.sent_at::text,
@@ -431,6 +433,7 @@ export async function getTests() {
     id: row.id,
     title: row.title,
     status: row.status,
+    selectionMode: row.selection_mode,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     sentAt: row.sent_at,

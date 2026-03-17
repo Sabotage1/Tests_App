@@ -32,6 +32,7 @@ export type TestListItem = {
   id: string;
   title: string;
   status: TestStatus;
+  selectionMode: string;
   createdAt: string;
   updatedAt: string;
   sentAt: string | null;
