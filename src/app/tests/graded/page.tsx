@@ -152,6 +152,9 @@ export default async function GradedTestsPage({ searchParams }: GradedTestsPageP
                     <Link className="button button-secondary" href={`/tests/${test.id}`}>
                       פתיחת מבחן
                     </Link>
+                    <Link className="button button-secondary" href={`/print/tests/${test.id}`} target="_blank">
+                      ייצוא ל־PDF
+                    </Link>
                     <Link className="button button-success" href={`/tests/${test.id}/grade`}>
                       צפייה / עריכת בדיקה
                     </Link>
