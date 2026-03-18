@@ -23,7 +23,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       <div className="page-header">
         <div>
           <h2>מאגר שאלות ותשובות</h2>
-          <p>לכל שאלה אפשר לשייך כמה subjects וכמה stages, ולשנות אותם בהמשך.</p>
+          <p>לכל שאלה אפשר לשייך כמה נושאים וכמה שלבים, ולשנות אותם בהמשך.</p>
         </div>
       </div>
 
@@ -58,7 +58,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
               <input name="sourceReference" defaultValue={editingQuestion?.sourceReference ?? ""} />
             </label>
             <div className="stack">
-              <strong>שיוך ל־Subjects</strong>
+              <strong>שיוך לנושאים</strong>
               <div className="checkbox-grid">
                 {subjects.map((subject) => (
                   <label key={subject.value} className="checkbox-card">
@@ -74,7 +74,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
               </div>
             </div>
             <div className="stack">
-              <strong>שיוך ל־Stages</strong>
+              <strong>שיוך לשלבים</strong>
               <div className="checkbox-grid">
                 {stages.map((stage) => (
                   <label key={stage.value} className="checkbox-card">

@@ -1,4 +1,4 @@
-export const APP_NAME = "מערכת מבחני פקח טיסה";
+export const APP_NAME = "מערכת ניהול מבחנים - מגדל בן גוריון";
 
 export const SESSION_COOKIE = "atc_session";
 

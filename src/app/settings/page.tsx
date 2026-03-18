@@ -32,7 +32,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       <div className="page-header">
         <div>
           <h2>הגדרות</h2>
-          <p>ניהול subjects, stages ומשתמשים. לעורך מותר להוסיף ולעדכן נושאים ושלבים.</p>
+          <p>ניהול נושאים, שלבים ומשתמשים. לעורך מותר להוסיף ולעדכן נושאים ושלבים.</p>
         </div>
       </div>
 
@@ -87,7 +87,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
       <div className="grid grid-2">
         <div className="card">
-          <h3>Subjects</h3>
+          <h3>נושאים</h3>
           <div className="stack">
             {subjects.map((subject) => (
               <form key={subject.value} action={saveLookupAction}>
@@ -116,7 +116,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         </div>
 
         <div className="card">
-          <h3>Stages</h3>
+          <h3>שלבים</h3>
           <div className="stack">
             {stages.map((stage) => (
               <form key={stage.value} action={saveLookupAction}>
@@ -159,7 +159,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                       <input name="displayName" defaultValue={item.displayName} required />
                     </label>
                     <label>
-                      Username
+                      שם משתמש
                       <input name="username" defaultValue={item.username} required />
                     </label>
                     <label>
@@ -169,8 +169,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                     <label>
                       תפקיד
                       <select name="role" defaultValue={item.role}>
-                        <option value="editor">Editor</option>
-                        <option value="admin">Admin</option>
+                        <option value="editor">עורך</option>
+                        <option value="admin">אדמין</option>
                       </select>
                     </label>
                     <label>
@@ -195,7 +195,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   <input name="displayName" required />
                 </label>
                 <label>
-                  Username
+                  שם משתמש
                   <input name="username" required />
                 </label>
                 <label>
@@ -205,8 +205,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 <label>
                   תפקיד
                   <select name="role" defaultValue="editor">
-                    <option value="editor">Editor</option>
-                    <option value="admin">Admin</option>
+                    <option value="editor">עורך</option>
+                    <option value="admin">אדמין</option>
                   </select>
                 </label>
                 <label>

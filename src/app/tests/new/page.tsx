@@ -20,7 +20,7 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
       <div className="page-header">
         <div>
           <h2>יצירת מבחן חדש</h2>
-          <p>בחר כמות שאלות, סינון לפי subjects ו־stages, או יצירה אקראית מכל המאגר.</p>
+          <p>בחר כמות שאלות, סינון לפי נושאים ושלבים, או יצירה אקראית מכל המאגר.</p>
         </div>
       </div>
       {params.error ? <div className="alert">{params.error}</div> : null}
@@ -48,7 +48,7 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
               שיטת בחירה
               <select name="selectionMode" defaultValue="random">
                 <option value="random">אקראי מכל המאגר</option>
-                <option value="filtered">אקראי רק לפי subjects/stages שנבחרו</option>
+                <option value="filtered">אקראי רק לפי הנושאים והשלבים שנבחרו</option>
               </select>
             </label>
             <label>
@@ -73,7 +73,7 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
           </div>
 
           <div className="stack">
-            <strong>Subjects למבחן</strong>
+            <strong>נושאים למבחן</strong>
             <div className="checkbox-grid">
               {subjects.map((subject) => (
                 <label className="checkbox-card" key={subject.value}>
@@ -85,7 +85,7 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
           </div>
 
           <div className="stack">
-            <strong>Stages למבחן</strong>
+            <strong>שלבים למבחן</strong>
             <div className="checkbox-grid">
               {stages.map((stage) => (
                 <label className="checkbox-card" key={stage.value}>

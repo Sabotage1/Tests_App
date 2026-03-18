@@ -30,7 +30,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
     <div className="stack">
       <div className="page-header">
         <div>
-          <h2>דשבורד ניהול</h2>
+          <h2>לוח בקרה</h2>
           <p>תמונת מצב של מאגר השאלות והמבחנים שנוצרו, נשלחו, הושלמו ונבדקו.</p>
         </div>
         <div className="button-row">

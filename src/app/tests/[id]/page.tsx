@@ -11,6 +11,19 @@ type TestPageProps = {
   searchParams: Promise<{ durationSaved?: string; mail?: string; mailError?: string; reused?: string }>;
 };
 
+const STATUS_LABELS = {
+  generated: "מבחן שנוצר",
+  sent: "מבחן שנשלח",
+  completed: "מבחן שהוגש",
+  graded: "מבחן שנבדק",
+} as const;
+
+const SELECTION_MODE_LABELS: Record<string, string> = {
+  random: "בחירה אקראית מכל המאגר",
+  filtered: "בחירה אקראית לפי סינון",
+  archived_copy: "עותק שנשלח מחדש מהמאגר",
+};
+
 function getSolvedMinutes(startedAt: string | null, submittedAt: string | null) {
   if (!startedAt || !submittedAt) {
     return null;
@@ -45,7 +58,7 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
         <div>
           <h2>{test.title}</h2>
           <p>
-            סטטוס: {test.status} | יוצר: {test.creatorName} | שאלות: {test.questionCount}
+            סטטוס: {STATUS_LABELS[test.status]} | יוצר: {test.creatorName} | שאלות: {test.questionCount}
           </p>
         </div>
         <div className="button-row">
@@ -73,7 +86,7 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
       <div className="grid grid-2">
         <div className="card">
           <h3>פרטי מבחן</h3>
-          <p>שיטת בחירה: {test.selectionMode}</p>
+          <p>שיטת בחירה: {SELECTION_MODE_LABELS[test.selectionMode] ?? "שיטת בחירה מותאמת"}</p>
           <p>משך: {test.durationMinutes === 0 ? "ללא הגבלת זמן" : `${test.durationMinutes} דקות`}</p>
           <p>נוצר: {new Date(test.createdAt).toLocaleString("he-IL")}</p>
           <p>נשלח: {test.sentAt ? new Date(test.sentAt).toLocaleString("he-IL") : "-"}</p>

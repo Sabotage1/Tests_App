@@ -56,11 +56,13 @@ export default async function GradePage({ params, searchParams }: GradePageProps
         <form action={gradeTestWithAiAction}>
           <input type="hidden" name="testId" value={test.id} />
           <button className="button button-success" type="submit">
-            בדיקה אוטומטית עם AI
+            בדיקה אוטומטית עם בינה מלאכותית
           </button>
         </form>
       </div>
-      {query.aiSaved ? <div className="alert">בדיקת ה־AI נשמרה במבחן. ניתן לעבור ולתקן ידנית לפני שמירה נוספת.</div> : null}
+      {query.aiSaved ? (
+        <div className="alert">תוצאות הבדיקה האוטומטית נשמרו במבחן. ניתן לעבור ולתקן ידנית לפני שמירה נוספת.</div>
+      ) : null}
       {query.aiError ? <div className="alert">{query.aiError}</div> : null}
 
       <form action={gradeTestAction}>

@@ -24,14 +24,14 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <div className="app-shell">
             <aside className="sidebar">
               <div className="brand">
-                <small>ATC Training Suite</small>
+                <small>מערכת הכשרת פקחי טיסה</small>
                 <h1>{APP_NAME}</h1>
                 <p>
                   {user.displayName} | {user.role === "admin" ? "אדמין" : "עורך"}
                 </p>
               </div>
               <nav className="nav">
-                <Link href="/dashboard">דשבורד</Link>
+                <Link href="/dashboard">לוח בקרה</Link>
                 <Link href="/questions">מאגר שאלות</Link>
                 <Link href="/tests/library">מאגר מבחנים</Link>
                 <Link href="/tests/review">בדיקת מבחנים</Link>
