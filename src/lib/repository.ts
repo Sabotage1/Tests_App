@@ -107,6 +107,10 @@ export async function setDefaultTestDurationMinutes(durationMinutes: number) {
   );
 }
 
+export async function deleteAllTests() {
+  await query("DELETE FROM tests");
+}
+
 export async function getStages() {
   const result = await query<Option>("SELECT id AS value, name AS label FROM stages ORDER BY name");
   return result.rows;

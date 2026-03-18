@@ -54,6 +54,10 @@ a {
   height: 100vh;
 }
 
+.sidebar-mobile {
+  display: none;
+}
+
 .brand {
   display: flex;
   flex-direction: column;
@@ -69,6 +73,12 @@ a {
 .sidebar small {
   margin: 0;
   color: rgba(255, 255, 255, 0.78);
+}
+
+.sidebar-version {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .nav {
@@ -385,6 +395,63 @@ textarea {
   .sidebar {
     position: static;
     height: auto;
+    padding: 14px 16px;
+  }
+
+  .sidebar-desktop {
+    display: none;
+  }
+
+  .sidebar-mobile {
+    display: block;
+  }
+
+  .mobile-menu-trigger {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+  }
+
+  .mobile-menu-trigger::-webkit-details-marker {
+    display: none;
+  }
+
+  .mobile-menu-title {
+    font-weight: 700;
+  }
+
+  .mobile-menu-icon {
+    display: grid;
+    gap: 4px;
+  }
+
+  .mobile-menu-icon span {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background: white;
+    border-radius: 999px;
+  }
+
+  .sidebar-mobile-panel {
+    display: grid;
+    gap: 16px;
+    margin-top: 12px;
+    padding: 18px;
+    border-radius: 20px;
+    background: rgba(0, 0, 0, 0.12);
+  }
+
+  .table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
   }
 
   .grid-2,

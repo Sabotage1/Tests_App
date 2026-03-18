@@ -1,5 +1,6 @@
 import {
   changeOwnPasswordAction,
+  deleteAllTestsAction,
   saveDefaultDurationAction,
   saveLookupAction,
   saveUserAction,
@@ -14,6 +15,8 @@ type SettingsPageProps = {
     passwordSaved?: string;
     passwordError?: string;
     userSaved?: string;
+    testsCleared?: string;
+    testsClearError?: string;
   }>;
 };
 
@@ -40,6 +43,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       {params.passwordSaved ? <div className="alert">הסיסמה עודכנה בהצלחה.</div> : null}
       {params.passwordError ? <div className="alert">עדכון הסיסמה נכשל. בדוק את הסיסמה הנוכחית ואת האימות.</div> : null}
       {params.userSaved ? <div className="alert">פרטי המשתמש נשמרו.</div> : null}
+      {params.testsCleared ? <div className="alert">כל המבחנים נמחקו מהמערכת.</div> : null}
+      {params.testsClearError ? <div className="alert">כדי למחוק את כל המבחנים יש להקליד בדיוק: מחק הכל</div> : null}
 
       <div className="card">
         <h3>ברירת מחדל למשך מבחן</h3>
@@ -171,6 +176,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                       <select name="role" defaultValue={item.role}>
                         <option value="editor">עורך</option>
                         <option value="admin">אדמין</option>
+                        <option value="viewer">צופה</option>
                       </select>
                     </label>
                     <label>
@@ -186,38 +192,57 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             </div>
           </div>
 
-          <div className="card">
-            <h3>הוספת משתמש</h3>
-            <form action={saveUserAction}>
-              <div className="grid grid-3">
+          <div className="stack">
+            <div className="card">
+              <h3>הוספת משתמש</h3>
+              <form action={saveUserAction}>
+                <div className="grid grid-3">
+                  <label>
+                    שם תצוגה
+                    <input name="displayName" required />
+                  </label>
+                  <label>
+                    שם משתמש
+                    <input name="username" required />
+                  </label>
+                  <label>
+                    אימייל
+                    <input name="email" type="email" />
+                  </label>
+                  <label>
+                    תפקיד
+                    <select name="role" defaultValue="editor">
+                      <option value="editor">עורך</option>
+                      <option value="admin">אדמין</option>
+                      <option value="viewer">צופה</option>
+                    </select>
+                  </label>
+                  <label>
+                    סיסמה
+                    <input name="password" type="password" minLength={6} required />
+                  </label>
+                </div>
+                <button className="button button-primary" type="submit">
+                  הוספת משתמש
+                </button>
+              </form>
+            </div>
+
+            <div className="card">
+              <h3>ניקוי מערכת</h3>
+              <p className="muted">
+                פעולה זו תמחק את כל המבחנים שנוצרו, נשלחו, הוגשו או נבדקו. מאגר השאלות והמשתמשים לא יימחקו.
+              </p>
+              <form action={deleteAllTestsAction}>
                 <label>
-                  שם תצוגה
-                  <input name="displayName" required />
+                  להקליד לאישור
+                  <input name="confirmation" placeholder="מחק הכל" required />
                 </label>
-                <label>
-                  שם משתמש
-                  <input name="username" required />
-                </label>
-                <label>
-                  אימייל
-                  <input name="email" type="email" />
-                </label>
-                <label>
-                  תפקיד
-                  <select name="role" defaultValue="editor">
-                    <option value="editor">עורך</option>
-                    <option value="admin">אדמין</option>
-                  </select>
-                </label>
-                <label>
-                  סיסמה
-                  <input name="password" type="password" minLength={6} required />
-                </label>
-              </div>
-              <button className="button button-primary" type="submit">
-                הוספת משתמש
-              </button>
-            </form>
+                <button className="button button-danger" type="submit">
+                  מחיקת כל המבחנים
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       ) : null}

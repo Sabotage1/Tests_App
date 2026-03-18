@@ -12,6 +12,7 @@ import {
   cloneTestForNewStudent,
   createTest,
   createUser,
+  deleteAllTests,
   ensureShareToken,
   gradeTest,
   getDefaultTestDurationMinutes,
@@ -111,6 +112,26 @@ export async function saveUserAction(formData: FormData) {
 
   revalidatePath("/settings");
   redirect("/settings");
+}
+
+export async function deleteAllTestsAction(formData: FormData) {
+  await requireAdmin();
+  const confirmation = formData.get("confirmation")?.toString().trim() ?? "";
+
+  if (confirmation !== "מחק הכל") {
+    redirect("/settings?testsClearError=1");
+  }
+
+  await deleteAllTests();
+
+  revalidatePath("/dashboard");
+  revalidatePath("/tests/library");
+  revalidatePath("/tests/archive");
+  revalidatePath("/tests/review");
+  revalidatePath("/tests/graded");
+  revalidatePath("/tests/new");
+  revalidatePath("/settings");
+  redirect("/settings?testsCleared=1");
 }
 
 export async function updateUserAction(formData: FormData) {
