@@ -35,6 +35,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 <Link href="/questions">מאגר שאלות</Link>
                 <Link href="/tests/library">מאגר מבחנים</Link>
                 <Link href="/tests/review">בדיקת מבחנים</Link>
+                <Link href="/tests/graded">מבחנים שנבדקו</Link>
                 <Link href="/tests/archive">ארכיון מבחנים</Link>
                 <Link href="/tests/new">יצירת מבחן</Link>
                 <Link href="/settings">הגדרות</Link>

@@ -38,6 +38,7 @@ export type TestListItem = {
   sentAt: string | null;
   startedAt: string | null;
   submittedAt: string | null;
+  gradedAt: string | null;
   questionCount: number;
   creatorName: string;
   studentName: string | null;

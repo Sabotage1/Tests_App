@@ -403,6 +403,7 @@ export async function getTests() {
     sent_at: string | null;
     started_at: string | null;
     submitted_at: string | null;
+    graded_at: string | null;
     question_count: number;
     creator_name: string;
     student_name: string | null;
@@ -419,6 +420,7 @@ export async function getTests() {
       t.sent_at::text,
       t.started_at::text,
       t.submitted_at::text,
+      t.graded_at::text,
       t.question_count,
       u.display_name AS creator_name,
       t.student_name,
@@ -439,6 +441,7 @@ export async function getTests() {
     sentAt: row.sent_at,
     startedAt: row.started_at,
     submittedAt: row.submitted_at,
+    gradedAt: row.graded_at,
     questionCount: row.question_count,
     creatorName: row.creator_name,
     studentName: row.student_name,
