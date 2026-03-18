@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { gradeTestAction, gradeTestWithAiAction } from "@/app/actions";
 import { requireUser } from "@/lib/auth";
+import { AiGradingButton } from "@/components/AiGradingButton";
 import { getTestById } from "@/lib/repository";
 
 type GradePageProps = {
@@ -55,9 +56,7 @@ export default async function GradePage({ params, searchParams }: GradePageProps
         </div>
         <form action={gradeTestWithAiAction}>
           <input type="hidden" name="testId" value={test.id} />
-          <button className="button button-success" type="submit">
-            בדיקה אוטומטית עם בינה מלאכותית
-          </button>
+          <AiGradingButton />
         </form>
       </div>
       {query.aiSaved ? (

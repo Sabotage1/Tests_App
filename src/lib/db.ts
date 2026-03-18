@@ -15,6 +15,25 @@ declare global {
 const connectionString =
   process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:55432/atc_tests";
 
+async function backfillViewerRole(client: PoolClient) {
+  const result = await client.query<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM users WHERE role = 'viewer'",
+  );
+
+  if (Number(result.rows[0]?.count ?? 0) > 0) {
+    return;
+  }
+
+  await client.query(
+    `
+      INSERT INTO users (id, username, display_name, email, role, password_hash, created_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      ON CONFLICT (username) DO NOTHING
+    `,
+    [nanoid(), "viewer", "צופה", null, "viewer", bcrypt.hashSync("Viewer123!", 10)],
+  );
+}
+
 function getPool() {
   if (!global.__atcPool__) {
     global.__atcPool__ = new Pool({
@@ -152,6 +171,8 @@ async function seedUsers(client: PoolClient) {
       now,
     ]);
   }
+
+  await backfillViewerRole(client);
 }
 
 async function seedLookupTable(client: PoolClient, table: "subjects" | "stages", values: string[]) {

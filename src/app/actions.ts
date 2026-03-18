@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { clearSession, createSession, requireAdmin, requireUser } from "@/lib/auth";
+import { clearSession, createSession, requireAdmin, requireEditor, requireUser } from "@/lib/auth";
 import { gradeTestWithAi } from "@/lib/ai-grading";
 import {
   archiveQuestion,
@@ -51,7 +51,7 @@ export async function logoutAction() {
 }
 
 export async function saveQuestionAction(formData: FormData) {
-  await requireUser();
+  await requireEditor();
 
   const id = formData.get("id")?.toString() || null;
   await upsertQuestion({
@@ -82,7 +82,7 @@ export async function archiveQuestionAction(formData: FormData) {
 }
 
 export async function saveLookupAction(formData: FormData) {
-  await requireUser();
+  await requireEditor();
   const type = formData.get("type")?.toString();
   const name = formData.get("name")?.toString() ?? "";
   const id = formData.get("id")?.toString() || null;
@@ -105,7 +105,7 @@ export async function saveUserAction(formData: FormData) {
     username: formData.get("username")?.toString() ?? "",
     displayName: formData.get("displayName")?.toString() ?? "",
     email: formData.get("email")?.toString() ?? "",
-    role: (formData.get("role")?.toString() ?? "editor") as "admin" | "editor",
+    role: (formData.get("role")?.toString() ?? "editor") as "admin" | "editor" | "viewer",
     password: formData.get("password")?.toString() ?? "",
   });
 
@@ -121,7 +121,7 @@ export async function updateUserAction(formData: FormData) {
     username: formData.get("username")?.toString() ?? "",
     displayName: formData.get("displayName")?.toString() ?? "",
     email: formData.get("email")?.toString() ?? "",
-    role: (formData.get("role")?.toString() ?? "editor") as "admin" | "editor",
+    role: (formData.get("role")?.toString() ?? "editor") as "admin" | "editor" | "viewer",
     password: formData.get("password")?.toString() ?? "",
   });
 
@@ -130,7 +130,7 @@ export async function updateUserAction(formData: FormData) {
 }
 
 export async function changeOwnPasswordAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireEditor();
   const currentPassword = formData.get("currentPassword")?.toString() ?? "";
   const newPassword = formData.get("newPassword")?.toString() ?? "";
   const confirmPassword = formData.get("confirmPassword")?.toString() ?? "";
@@ -154,7 +154,7 @@ export async function changeOwnPasswordAction(formData: FormData) {
 }
 
 export async function saveDefaultDurationAction(formData: FormData) {
-  await requireUser();
+  await requireEditor();
 
   const rawValue = formData.get("defaultDurationMinutes")?.toString().trim() ?? "";
   const currentDefault = await getDefaultTestDurationMinutes();
@@ -167,7 +167,7 @@ export async function saveDefaultDurationAction(formData: FormData) {
 }
 
 export async function createTestAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireEditor();
   const rawDuration = formData.get("durationMinutes")?.toString().trim() ?? "";
   let id = "";
 
@@ -196,7 +196,7 @@ export async function createTestAction(formData: FormData) {
 }
 
 export async function createShareLinkAction(formData: FormData) {
-  await requireUser();
+  await requireEditor();
   const id = formData.get("id")?.toString() ?? "";
   await ensureShareToken(id);
   revalidatePath(`/tests/${id}`);
@@ -205,7 +205,7 @@ export async function createShareLinkAction(formData: FormData) {
 }
 
 export async function resendArchivedTestAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireEditor();
   const sourceTestId = formData.get("sourceTestId")?.toString() ?? "";
   let newTestId = "";
 
@@ -231,7 +231,7 @@ export async function resendArchivedTestAction(formData: FormData) {
 }
 
 export async function updateTestDurationAction(formData: FormData) {
-  await requireUser();
+  await requireEditor();
   const testId = formData.get("testId")?.toString() ?? "";
   const shareToken = formData.get("shareToken")?.toString() ?? "";
   const rawValue = formData.get("durationMinutes")?.toString().trim() ?? "";
@@ -277,7 +277,7 @@ export async function submitSharedTestAction(formData: FormData) {
 }
 
 export async function gradeTestAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireEditor();
 
   const testId = formData.get("testId")?.toString() ?? "";
   const ids = getMany(formData, "questionIds");
@@ -299,7 +299,7 @@ export async function gradeTestAction(formData: FormData) {
 }
 
 export async function gradeTestWithAiAction(formData: FormData) {
-  const user = await requireUser();
+  const user = await requireEditor();
   const testId = formData.get("testId")?.toString() ?? "";
 
   try {
@@ -315,7 +315,7 @@ export async function gradeTestWithAiAction(formData: FormData) {
 }
 
 export async function sendGradeEmailAction(formData: FormData) {
-  await requireUser();
+  await requireEditor();
   const testId = formData.get("testId")?.toString() ?? "";
 
   try {

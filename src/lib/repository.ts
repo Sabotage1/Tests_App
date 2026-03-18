@@ -12,7 +12,7 @@ type UserRow = {
   username: string;
   display_name: string;
   email: string | null;
-  role: "admin" | "editor";
+  role: "admin" | "editor" | "viewer";
   password_hash: string;
 };
 
@@ -118,7 +118,7 @@ export async function getUsers() {
     username: string;
     display_name: string;
     email: string | null;
-    role: "admin" | "editor";
+    role: "admin" | "editor" | "viewer";
   }>(`
     SELECT id, username, display_name, email, role
     FROM users
@@ -138,7 +138,7 @@ export async function createUser(input: {
   username: string;
   displayName: string;
   email?: string;
-  role: "admin" | "editor";
+  role: "admin" | "editor" | "viewer";
   password: string;
 }) {
   await query(
@@ -162,7 +162,7 @@ export async function updateUser(input: {
   username: string;
   displayName: string;
   email?: string;
-  role: "admin" | "editor";
+  role: "admin" | "editor" | "viewer";
   password?: string;
 }) {
   if (input.password?.trim()) {

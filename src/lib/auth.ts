@@ -12,7 +12,7 @@ function mapUser(row: {
   username: string;
   display_name: string;
   email: string | null;
-  role: "admin" | "editor";
+  role: "admin" | "editor" | "viewer";
 }): User {
   return {
     id: row.id,
@@ -36,7 +36,7 @@ export async function getCurrentUser(): Promise<User | null> {
     username: string;
     display_name: string;
     email: string | null;
-    role: "admin" | "editor";
+    role: "admin" | "editor" | "viewer";
   }>(
     `
       SELECT u.id, u.username, u.display_name, u.email, u.role
@@ -68,6 +68,16 @@ export async function requireAdmin() {
   const user = await requireUser();
 
   if (user.role !== "admin") {
+    redirect("/dashboard");
+  }
+
+  return user;
+}
+
+export async function requireEditor() {
+  const user = await requireUser();
+
+  if (user.role === "viewer") {
     redirect("/dashboard");
   }
 

@@ -52,6 +52,7 @@ export const TEST_STATUSES = [
 export const USER_ROLES = [
   "admin",
   "editor",
+  "viewer",
 ] as const;
 
 export type TestStatus = (typeof TEST_STATUSES)[number];
