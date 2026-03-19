@@ -22,11 +22,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <form action={loginAction}>
           <label>
             שם משתמש
-            <input name="username" required />
+            <input name="username" autoComplete="username" autoCapitalize="none" required />
           </label>
           <label>
             סיסמה
-            <input name="password" type="password" required />
+            <input name="password" type="password" autoComplete="current-password" required />
           </label>
           <SubmitButton pendingLabel="נכנס למערכת...">
             כניסה למערכת

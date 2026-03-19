@@ -8,6 +8,8 @@ import { SESSION_COOKIE } from "@/lib/constants";
 import { query } from "@/lib/db";
 import type { User } from "@/lib/types";
 
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
+
 type UserRow = {
   id: string;
   username: string;
@@ -90,7 +92,7 @@ export async function requireEditor() {
 export async function createSession(userId: string) {
   const token = nanoid(32);
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 14);
+  const expiresAt = new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000);
   const isProduction = process.env.NODE_ENV === "production";
 
   await query(
@@ -107,6 +109,7 @@ export async function createSession(userId: string) {
     sameSite: "lax",
     secure: isProduction,
     path: "/",
+    maxAge: SESSION_MAX_AGE_SECONDS,
     expires: expiresAt,
   });
 }
