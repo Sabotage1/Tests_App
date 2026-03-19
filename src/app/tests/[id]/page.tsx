@@ -84,6 +84,16 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
             </SubmitButton>
           </form>
           {test.shareUrl ? <CopyLinkButton path={test.shareUrl} autoCopy={query.reused === "1"} /> : null}
+          <form action={sendTestInvitationEmailAction}>
+            <input type="hidden" name="testId" value={test.id} />
+            <SubmitButton
+              className="button button-success"
+              pendingLabel="שולח מבחן במייל..."
+              disabled={!test.studentEmail}
+            >
+              שלח במייל
+            </SubmitButton>
+          </form>
           <Link className="button button-secondary" href={`/print/tests/${test.id}`} target="_blank">
             ייצוא ל־PDF
           </Link>
@@ -138,16 +148,6 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
               <p>{test.shareUrl}</p>
             </div>
           ) : null}
-          <form action={sendTestInvitationEmailAction}>
-            <input type="hidden" name="testId" value={test.id} />
-            <SubmitButton
-              className="button button-success"
-              pendingLabel="שולח מבחן במייל..."
-              disabled={!test.studentEmail}
-            >
-              שליחת המבחן במייל לחניך
-            </SubmitButton>
-          </form>
           {!test.studentEmail ? (
             <p className="muted">כדי לשלוח את המבחן במייל, יש להזין כתובת מייל לחניך במבחן.</p>
           ) : null}
