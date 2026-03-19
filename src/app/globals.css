@@ -111,6 +111,30 @@ a {
   line-height: 1.45;
 }
 
+.nav-link-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.nav-badge {
+  min-width: 1.8rem;
+  height: 1.8rem;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #ffe3e3;
+  color: #9b1c1c;
+  font-size: 0.85rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 1px rgba(155, 28, 28, 0.12);
+  flex-shrink: 0;
+}
+
 .nav a:hover {
   background: rgba(255, 255, 255, 0.14);
 }
@@ -342,6 +366,10 @@ textarea {
 
 .grade-panel {
   direction: rtl;
+}
+
+.grade-actions {
+  margin-top: 14px;
 }
 
 .expected-answer {

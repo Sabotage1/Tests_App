@@ -5,6 +5,7 @@ import { logoutAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { getCurrentUser } from "@/lib/auth";
 import { APP_NAME, APP_VERSION } from "@/lib/constants";
+import { getPendingReviewCount } from "@/lib/repository";
 
 import "@/app/globals.css";
 
@@ -33,6 +34,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   }
 
   const currentUser = user;
+  const pendingReviewCount = await getPendingReviewCount();
+  const reviewBadge = pendingReviewCount > 99 ? "99+" : String(pendingReviewCount);
 
   function SidebarContent() {
     return (
@@ -45,14 +48,47 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </p>
         </div>
         <nav className="nav">
-          <Link href="/dashboard">לוח בקרה</Link>
-          <Link href="/questions">מאגר שאלות</Link>
-          <Link href="/tests/library">מאגר מבחנים</Link>
-          <Link href="/tests/review">בדיקת מבחנים</Link>
-          <Link href="/tests/graded">מבחנים שנבדקו</Link>
-          <Link href="/tests/archive">ארכיון מבחנים</Link>
-          <Link href="/tests/new">יצירת מבחן</Link>
-          <Link href="/settings">הגדרות</Link>
+          <Link href="/dashboard">
+            <span className="nav-link-content">
+              <span>לוח בקרה</span>
+            </span>
+          </Link>
+          <Link href="/questions">
+            <span className="nav-link-content">
+              <span>מאגר שאלות</span>
+            </span>
+          </Link>
+          <Link href="/tests/library">
+            <span className="nav-link-content">
+              <span>מאגר מבחנים</span>
+            </span>
+          </Link>
+          <Link href="/tests/review">
+            <span className="nav-link-content">
+              <span>בדיקת מבחנים</span>
+              {pendingReviewCount > 0 ? <span className="nav-badge">{reviewBadge}</span> : null}
+            </span>
+          </Link>
+          <Link href="/tests/graded">
+            <span className="nav-link-content">
+              <span>מבחנים שנבדקו</span>
+            </span>
+          </Link>
+          <Link href="/tests/archive">
+            <span className="nav-link-content">
+              <span>ארכיון מבחנים</span>
+            </span>
+          </Link>
+          <Link href="/tests/new">
+            <span className="nav-link-content">
+              <span>יצירת מבחן</span>
+            </span>
+          </Link>
+          <Link href="/settings">
+            <span className="nav-link-content">
+              <span>הגדרות</span>
+            </span>
+          </Link>
         </nav>
         <form action={logoutAction}>
           <SubmitButton className="button button-secondary" pendingLabel="מתנתק...">

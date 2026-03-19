@@ -185,6 +185,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         <div className="grid grid-2">
           <div className="card">
             <h3>משתמשים קיימים</h3>
+            <p className="muted">התראות על מבחנים חדשים לבדיקה יישלחו רק למשתמשים שמסומנים כאן ושיש להם כתובת מייל.</p>
             <div className="stack">
               {users.map((item) => (
                 <form key={item.id} action={updateUserAction} className="question-block">
@@ -213,6 +214,14 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                     <label>
                       סיסמה חדשה
                       <input name="password" type="password" placeholder="להשאיר ריק ללא שינוי" />
+                    </label>
+                    <label className="checkbox-card">
+                      <input
+                        name="reviewNotificationsEnabled"
+                        type="checkbox"
+                        defaultChecked={item.reviewNotificationsEnabled}
+                      />
+                      קבלת התראות על מבחנים לבדיקה
                     </label>
                   </div>
                   <div className="button-row">
@@ -260,6 +269,10 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   <label>
                     סיסמה
                     <input name="password" type="password" minLength={6} required />
+                  </label>
+                  <label className="checkbox-card">
+                    <input name="reviewNotificationsEnabled" type="checkbox" />
+                    קבלת התראות על מבחנים לבדיקה
                   </label>
                 </div>
                 <SubmitButton pendingLabel="מוסיף משתמש...">

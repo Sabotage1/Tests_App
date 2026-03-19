@@ -109,9 +109,12 @@ export default async function GradePage({ params, searchParams }: GradePageProps
             הערות כלליות
             <textarea name="gradingNotes" defaultValue={test.gradingNotes ?? ""} />
           </label>
-          <SubmitButton pendingLabel="שומר בדיקה...">
-            שמירת בדיקה
-          </SubmitButton>
+          <p className="muted">בלחיצה על שמירת בדיקה, המערכת תנסה לשלוח לנבחן את הציון לכתובת המייל שהוזנה במבחן.</p>
+          <div className="grade-actions">
+            <SubmitButton pendingLabel="שומר בדיקה...">
+              שמירת בדיקה
+            </SubmitButton>
+          </div>
         </div>
       </form>
     </div>

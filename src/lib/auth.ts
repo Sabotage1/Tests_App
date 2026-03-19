@@ -14,6 +14,7 @@ type UserRow = {
   display_name: string;
   email: string | null;
   role: "admin" | "editor" | "viewer";
+  review_notifications_enabled: boolean;
 };
 
 function mapUser(row: UserRow): User {
@@ -23,13 +24,14 @@ function mapUser(row: UserRow): User {
     displayName: row.display_name,
     email: row.email,
     role: row.role,
+    reviewNotificationsEnabled: row.review_notifications_enabled,
   };
 }
 
 const getUserBySessionToken = cache(async (token: string): Promise<User | null> => {
   const result = await query<UserRow>(
     `
-      SELECT u.id, u.username, u.display_name, u.email, u.role
+      SELECT u.id, u.username, u.display_name, u.email, u.role, u.review_notifications_enabled
       FROM sessions s
       JOIN users u ON u.id = s.user_id
       WHERE s.token = $1 AND s.expires_at > NOW()

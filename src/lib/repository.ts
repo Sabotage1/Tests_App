@@ -3,7 +3,7 @@ import { nanoid } from "nanoid";
 import nodemailer from "nodemailer";
 import type { PoolClient } from "pg";
 
-import { DEFAULT_DURATION_MINUTES, MISSING_ANSWER_TEXT } from "@/lib/constants";
+import { APP_NAME, DEFAULT_DURATION_MINUTES, MISSING_ANSWER_TEXT } from "@/lib/constants";
 import { query, withTransaction } from "@/lib/db";
 import type { DashboardStats, Option, QuestionRow, TestDetails, TestListItem, User } from "@/lib/types";
 
@@ -13,6 +13,7 @@ type UserRow = {
   display_name: string;
   email: string | null;
   role: "admin" | "editor" | "viewer";
+  review_notifications_enabled: boolean;
   password_hash: string;
 };
 
@@ -23,6 +24,7 @@ function mapUser(row: UserRow): User {
     displayName: row.display_name,
     email: row.email,
     role: row.role,
+    reviewNotificationsEnabled: row.review_notifications_enabled,
   };
 }
 
@@ -40,6 +42,23 @@ function formatArray(values: string[] | null | undefined) {
 
 function isMissingDuration(value: number | undefined) {
   return value === undefined || Number.isNaN(value);
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function getAppBaseUrl() {
+  return (
+    process.env.APP_BASE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    null
+  );
 }
 
 async function syncQuestionLinks(
@@ -61,7 +80,7 @@ async function syncQuestionLinks(
 export async function authenticateUser(username: string, password: string) {
   const result = await query<UserRow>(
     `
-      SELECT id, username, display_name, email, role, password_hash
+      SELECT id, username, display_name, email, role, review_notifications_enabled, password_hash
       FROM users
       WHERE username = $1
     `,
@@ -111,6 +130,14 @@ export async function deleteAllTests() {
   await query("DELETE FROM tests");
 }
 
+export async function getPendingReviewCount() {
+  const result = await query<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM tests WHERE status = 'completed'",
+  );
+
+  return Number(result.rows[0]?.count ?? 0);
+}
+
 export async function getStages() {
   const result = await query<Option>("SELECT id AS value, name AS label FROM stages ORDER BY name");
   return result.rows;
@@ -123,8 +150,9 @@ export async function getUsers() {
     display_name: string;
     email: string | null;
     role: "admin" | "editor" | "viewer";
+    review_notifications_enabled: boolean;
   }>(`
-    SELECT id, username, display_name, email, role
+    SELECT id, username, display_name, email, role, review_notifications_enabled
     FROM users
     ORDER BY role, display_name
   `);
@@ -135,6 +163,7 @@ export async function getUsers() {
     displayName: row.display_name,
     email: row.email,
     role: row.role,
+    reviewNotificationsEnabled: row.review_notifications_enabled,
   }));
 }
 
@@ -143,12 +172,15 @@ export async function createUser(input: {
   displayName: string;
   email?: string;
   role: "admin" | "editor" | "viewer";
+  reviewNotificationsEnabled?: boolean;
   password: string;
 }) {
   await query(
     `
-      INSERT INTO users (id, username, display_name, email, role, password_hash, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      INSERT INTO users (
+        id, username, display_name, email, role, review_notifications_enabled, password_hash, created_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
     `,
     [
       nanoid(),
@@ -156,6 +188,7 @@ export async function createUser(input: {
       input.displayName.trim(),
       input.email?.trim() || null,
       input.role,
+      Boolean(input.reviewNotificationsEnabled),
       bcrypt.hashSync(input.password, 10),
     ],
   );
@@ -202,6 +235,7 @@ export async function updateUser(input: {
   displayName: string;
   email?: string;
   role: "admin" | "editor" | "viewer";
+  reviewNotificationsEnabled?: boolean;
   password?: string;
 }) {
   if (input.password?.trim()) {
@@ -212,14 +246,16 @@ export async function updateUser(input: {
             display_name = $2,
             email = $3,
             role = $4,
-            password_hash = $5
-        WHERE id = $6
+            review_notifications_enabled = $5,
+            password_hash = $6
+        WHERE id = $7
       `,
       [
         input.username.trim().toLowerCase(),
         input.displayName.trim(),
         input.email?.trim() || null,
         input.role,
+        Boolean(input.reviewNotificationsEnabled),
         bcrypt.hashSync(input.password.trim(), 10),
         input.id,
       ],
@@ -233,10 +269,18 @@ export async function updateUser(input: {
       SET username = $1,
           display_name = $2,
           email = $3,
-          role = $4
-      WHERE id = $5
+          role = $4,
+          review_notifications_enabled = $5
+      WHERE id = $6
     `,
-    [input.username.trim().toLowerCase(), input.displayName.trim(), input.email?.trim() || null, input.role, input.id],
+    [
+      input.username.trim().toLowerCase(),
+      input.displayName.trim(),
+      input.email?.trim() || null,
+      input.role,
+      Boolean(input.reviewNotificationsEnabled),
+      input.id,
+    ],
   );
 }
 
@@ -247,7 +291,7 @@ export async function changeUserPassword(input: {
 }) {
   const result = await query<UserRow>(
     `
-      SELECT id, username, display_name, email, role, password_hash
+      SELECT id, username, display_name, email, role, review_notifications_enabled, password_hash
       FROM users
       WHERE id = $1
     `,
@@ -890,7 +934,7 @@ export async function submitTestByToken(input: {
   studentName?: string;
   studentEmail?: string;
 }) {
-  await withTransaction(async (client) => {
+  return withTransaction(async (client) => {
     const testResult = await client.query<{
       id: string;
       status: string;
@@ -945,6 +989,8 @@ export async function submitTestByToken(input: {
       `,
       [input.studentName?.trim() ?? "", input.studentEmail?.trim() ?? "", test.id],
     );
+
+    return test.id;
   });
 }
 
@@ -1017,6 +1063,105 @@ function buildGradeEmailHtml(test: TestDetails) {
       </div>
     </div>
   `;
+}
+
+function buildReviewNotificationEmailHtml(test: TestDetails, reviewUrl: string | null) {
+  const studentName = test.studentName ? escapeHtml(test.studentName) : "לא הוזן";
+  const studentEmail = test.studentEmail ? escapeHtml(test.studentEmail) : "לא הוזן";
+  const submittedAt = test.submittedAt ? new Date(test.submittedAt).toLocaleString("he-IL") : "לא זמין";
+  const reviewAction = reviewUrl
+    ? `
+      <p style="margin-top:24px">
+        <a
+          href="${escapeHtml(reviewUrl)}"
+          style="display:inline-block;padding:12px 18px;border-radius:999px;background:#0070a8;color:#ffffff;text-decoration:none;font-weight:700"
+        >
+          פתיחת בדיקת המבחן
+        </a>
+      </p>
+    `
+    : "";
+
+  return `
+    <div dir="rtl" style="font-family:Arial,sans-serif;background:#f5f7fb;padding:24px">
+      <div style="max-width:720px;margin:0 auto;background:white;padding:24px;border-radius:18px">
+        <h1 style="margin-top:0">מבחן חדש ממתין לבדיקה</h1>
+        <p><strong>מבחן:</strong> ${escapeHtml(test.title)}</p>
+        <p><strong>נבחן:</strong> ${studentName}</p>
+        <p><strong>מייל נבחן:</strong> ${studentEmail}</p>
+        <p><strong>מועד הגשה:</strong> ${escapeHtml(submittedAt)}</p>
+        <p><strong>כמות שאלות:</strong> ${test.questionCount}</p>
+        <p>המבחן הוגש למערכת ומחכה לבדיקה על ידי אחד הבודקים.</p>
+        ${reviewAction}
+      </div>
+    </div>
+  `;
+}
+
+async function sendResendEmail(input: {
+  to: string[];
+  subject: string;
+  html: string;
+  idempotencyKey?: string;
+}) {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+
+  if (!apiKey) {
+    throw new Error("יש להגדיר RESEND_API_KEY כדי לשלוח התראות.");
+  }
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      ...(input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : {}),
+    },
+    body: JSON.stringify({
+      from: process.env.RESEND_FROM?.trim() || `${APP_NAME} <onboarding@resend.dev>`,
+      to: input.to,
+      subject: input.subject,
+      html: input.html,
+    }),
+  });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(`שליחת ההתראה דרך Resend נכשלה: ${response.status} ${responseText}`);
+  }
+}
+
+export async function sendReviewNotificationEmails(testId: string) {
+  const [test, recipientsResult] = await Promise.all([
+    getTestById(testId),
+    query<{ email: string }>(`
+      SELECT email
+      FROM users
+      WHERE review_notifications_enabled = TRUE
+        AND email IS NOT NULL
+        AND BTRIM(email) <> ''
+      ORDER BY display_name
+    `),
+  ]);
+
+  if (!test) {
+    throw new Error("המבחן לא נמצא.");
+  }
+
+  const recipients = recipientsResult.rows.map((row) => row.email.trim());
+  if (recipients.length === 0) {
+    return;
+  }
+
+  const baseUrl = getAppBaseUrl();
+  const reviewUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/tests/${test.id}/grade` : null;
+
+  await sendResendEmail({
+    to: recipients,
+    subject: `מבחן חדש לבדיקה: ${test.title}`,
+    html: buildReviewNotificationEmailHtml(test, reviewUrl),
+    idempotencyKey: `review-notification:${test.id}:${test.submittedAt ?? "pending"}`,
+  });
 }
 
 export async function sendGradeEmail(testId: string) {

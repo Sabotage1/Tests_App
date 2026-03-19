@@ -20,6 +20,7 @@ import {
   gradeTest,
   getDefaultTestDurationMinutes,
   sendGradeEmail,
+  sendReviewNotificationEmails,
   setDefaultTestDurationMinutes,
   startTestByToken,
   submitTestByToken,
@@ -144,6 +145,7 @@ export async function saveUserAction(formData: FormData) {
     displayName: formData.get("displayName")?.toString() ?? "",
     email: formData.get("email")?.toString() ?? "",
     role: (formData.get("role")?.toString() ?? "editor") as "admin" | "editor" | "viewer",
+    reviewNotificationsEnabled: formData.get("reviewNotificationsEnabled")?.toString() === "on",
     password: formData.get("password")?.toString() ?? "",
   });
 
@@ -198,6 +200,7 @@ export async function updateUserAction(formData: FormData) {
     displayName: formData.get("displayName")?.toString() ?? "",
     email: formData.get("email")?.toString() ?? "",
     role: (formData.get("role")?.toString() ?? "editor") as "admin" | "editor" | "viewer",
+    reviewNotificationsEnabled: formData.get("reviewNotificationsEnabled")?.toString() === "on",
     password: formData.get("password")?.toString() ?? "",
   });
 
@@ -347,9 +350,10 @@ export async function submitSharedTestAction(formData: FormData) {
     id,
     answer: formData.get(`answer:${id}`)?.toString() ?? "",
   }));
+  let testId = "";
 
   try {
-    await submitTestByToken({
+    testId = await submitTestByToken({
       token,
       answers,
       studentName: formData.get("studentName")?.toString() ?? "",
@@ -358,6 +362,19 @@ export async function submitSharedTestAction(formData: FormData) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "שליחת המבחן נכשלה";
     redirect(`/share/${token}?error=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/dashboard");
+  revalidatePath("/tests/review");
+  revalidatePath("/tests/archive");
+  revalidatePath("/tests/library");
+  if (testId) {
+    revalidatePath(`/tests/${testId}`);
+    try {
+      await sendReviewNotificationEmails(testId);
+    } catch (error) {
+      console.error("Review notification email failed", error);
+    }
   }
 
   redirect(`/share/${token}?submitted=1`);
@@ -382,7 +399,16 @@ export async function gradeTestAction(formData: FormData) {
   });
 
   revalidatePath(`/tests/${testId}`);
-  redirect(`/tests/${testId}`);
+  revalidatePath("/tests/graded");
+  revalidatePath("/dashboard");
+
+  try {
+    await sendGradeEmail(testId);
+    redirect(`/tests/${testId}?mail=sent`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "הבדיקה נשמרה, אך שליחת המייל לנבחן נכשלה";
+    redirect(`/tests/${testId}?mailError=${encodeURIComponent(message)}`);
+  }
 }
 
 export async function gradeTestWithAiAction(formData: FormData) {

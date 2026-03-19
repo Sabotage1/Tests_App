@@ -79,6 +79,7 @@ async function createSchema(client: PoolClient) {
       display_name TEXT NOT NULL,
       email TEXT,
       role TEXT NOT NULL,
+      review_notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       password_hash TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL
     );
@@ -171,6 +172,7 @@ async function createSchema(client: PoolClient) {
     );
 
     ALTER TABLE tests ADD COLUMN IF NOT EXISTS graded_by_name TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS review_notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 }
 

@@ -6,6 +6,7 @@ export type User = {
   displayName: string;
   email: string | null;
   role: UserRole;
+  reviewNotificationsEnabled: boolean;
 };
 
 export type Option = {
