@@ -38,6 +38,8 @@ function getMany(formData: FormData, name: string) {
     .filter(Boolean);
 }
 
+type RedirectPath = Parameters<typeof redirect>[0];
+
 export async function loginAction(formData: FormData) {
   const username = formData.get("username")?.toString() ?? "";
   const password = formData.get("password")?.toString() ?? "";
@@ -392,7 +394,7 @@ export async function gradeTestAction(formData: FormData) {
     feedback: formData.get(`feedback:${id}`)?.toString() ?? "",
   }));
 
-  await gradeTest({
+  const gradedTest = await gradeTest({
     testId,
     gradedByName: user.displayName,
     gradingNotes: formData.get("gradingNotes")?.toString() ?? "",
@@ -403,13 +405,15 @@ export async function gradeTestAction(formData: FormData) {
   revalidatePath("/tests/graded");
   revalidatePath("/dashboard");
 
+  let redirectPath = `/tests/${testId}?mail=sent` as RedirectPath;
   try {
-    await sendGradeEmail(testId);
-    redirect(`/tests/${testId}?mail=sent`);
+    await sendGradeEmail(gradedTest);
   } catch (error) {
     const message = error instanceof Error ? error.message : "הבדיקה נשמרה, אך שליחת המייל לנבחן נכשלה";
-    redirect(`/tests/${testId}?mailError=${encodeURIComponent(message)}`);
+    redirectPath = `/tests/${testId}?mailError=${encodeURIComponent(message)}` as RedirectPath;
   }
+
+  redirect(redirectPath);
 }
 
 export async function gradeTestWithAiAction(formData: FormData) {
@@ -432,26 +436,30 @@ export async function sendGradeEmailAction(formData: FormData) {
   await requireEditor();
   const testId = formData.get("testId")?.toString() ?? "";
 
+  let redirectPath = `/tests/${testId}?mail=sent` as RedirectPath;
   try {
     await sendGradeEmail(testId);
-    redirect(`/tests/${testId}?mail=sent`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "שליחת המייל נכשלה";
-    redirect(`/tests/${testId}?mailError=${encodeURIComponent(message)}`);
+    redirectPath = `/tests/${testId}?mailError=${encodeURIComponent(message)}` as RedirectPath;
   }
+
+  redirect(redirectPath);
 }
 
 export async function sendTestInvitationEmailAction(formData: FormData) {
   await requireEditor();
   const testId = formData.get("testId")?.toString() ?? "";
 
+  let redirectPath = `/tests/${testId}?inviteMail=sent` as RedirectPath;
   try {
     await sendTestInvitationEmail(testId);
     revalidatePath(`/tests/${testId}`);
     revalidatePath("/dashboard");
-    redirect(`/tests/${testId}?inviteMail=sent`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "שליחת המבחן במייל נכשלה";
-    redirect(`/tests/${testId}?inviteMailError=${encodeURIComponent(message)}`);
+    redirectPath = `/tests/${testId}?inviteMailError=${encodeURIComponent(message)}` as RedirectPath;
   }
+
+  redirect(redirectPath);
 }

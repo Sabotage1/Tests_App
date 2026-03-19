@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
-import type { PoolClient } from "pg";
+import type { PoolClient, QueryResultRow } from "pg";
 
 import { APP_NAME, DEFAULT_DURATION_MINUTES, MISSING_ANSWER_TEXT } from "@/lib/constants";
 import { query, withTransaction } from "@/lib/db";
@@ -42,6 +42,8 @@ function formatArray(values: string[] | null | undefined) {
 function isMissingDuration(value: number | undefined) {
   return value === undefined || Number.isNaN(value);
 }
+
+type QueryFn = <T extends QueryResultRow>(text: string, values?: unknown[]) => Promise<{ rows: T[] }>;
 
 function escapeHtml(value: string) {
   return value
@@ -790,8 +792,8 @@ export async function updateTestDuration(input: {
   );
 }
 
-export async function getTestById(id: string) {
-  const testResult = await query<{
+async function getTestByIdWithQuery(runQuery: QueryFn, id: string) {
+  const testResult = await runQuery<{
     id: string;
     title: string;
     status: TestDetails["status"];
@@ -845,7 +847,7 @@ export async function getTestById(id: string) {
     return null;
   }
 
-  const questionsResult = await query<{
+  const questionsResult = await runQuery<{
     id: string;
     order_index: number;
     prompt: string;
@@ -907,6 +909,10 @@ export async function getTestById(id: string) {
       stageNames: formatArray(row.stage_names),
     })),
   } satisfies TestDetails;
+}
+
+export async function getTestById(id: string) {
+  return getTestByIdWithQuery((text, values) => query(text, values), id);
 }
 
 export async function ensureShareToken(testId: string) {
@@ -1033,7 +1039,7 @@ export async function gradeTest(input: {
   gradingNotes?: string;
   grades: Array<{ id: string; score: number; feedback: string }>;
 }) {
-  await withTransaction(async (client) => {
+  return withTransaction(async (client) => {
     const countResult = await client.query<{ count: string }>(
       "SELECT COUNT(*)::text AS count FROM test_questions WHERE test_id = $1",
       [input.testId],
@@ -1067,6 +1073,14 @@ export async function gradeTest(input: {
       `,
       [finalGrade, input.gradingNotes?.trim() || null, input.gradedByName.trim(), input.testId],
     );
+
+    const gradedTest = await getTestByIdWithQuery((text, values) => client.query(text, values), input.testId);
+
+    if (!gradedTest) {
+      throw new Error("המבחן לא נמצא לאחר שמירת הבדיקה.");
+    }
+
+    return gradedTest;
   });
 }
 
@@ -1078,7 +1092,6 @@ function buildGradeEmailHtml(test: TestDetails) {
           <div style="font-weight:700;margin-bottom:8px">שאלה ${question.orderIndex}</div>
           <div style="white-space:pre-wrap;margin-bottom:10px">${question.prompt}</div>
           <div style="margin-bottom:6px"><strong>תשובת תלמיד:</strong><br>${question.studentAnswer || "-"}</div>
-          <div style="margin-bottom:6px"><strong>תשובה צפויה:</strong><br>${question.expectedAnswer}</div>
           <div style="margin-bottom:6px"><strong>ציון לשאלה:</strong> ${question.score ?? 0}</div>
           <div><strong>הערת בודק:</strong><br>${question.feedback || "-"}</div>
         </div>
@@ -1259,8 +1272,8 @@ export async function sendTestInvitationEmail(testId: string) {
   });
 }
 
-export async function sendGradeEmail(testId: string) {
-  const test = await getTestById(testId);
+export async function sendGradeEmail(testOrDetails: string | TestDetails) {
+  const test = typeof testOrDetails === "string" ? await getTestById(testOrDetails) : testOrDetails;
   if (!test) {
     throw new Error("המבחן לא נמצא.");
   }
