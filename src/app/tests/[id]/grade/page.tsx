@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { gradeTestAction, gradeTestWithAiAction } from "@/app/actions";
 import { requireUser } from "@/lib/auth";
 import { AiGradingButton } from "@/components/AiGradingButton";
+import { SubmitButton } from "@/components/SubmitButton";
 import { getTestById } from "@/lib/repository";
 
 type GradePageProps = {
@@ -108,9 +109,9 @@ export default async function GradePage({ params, searchParams }: GradePageProps
             הערות כלליות
             <textarea name="gradingNotes" defaultValue={test.gradingNotes ?? ""} />
           </label>
-          <button className="button button-primary" type="submit">
+          <SubmitButton pendingLabel="שומר בדיקה...">
             שמירת בדיקה
-          </button>
+          </SubmitButton>
         </div>
       </form>
     </div>

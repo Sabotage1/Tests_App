@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
 import { getTests } from "@/lib/repository";
 
@@ -112,9 +113,9 @@ export default async function GradedTestsPage({ searchParams }: GradedTestsPageP
             </label>
           </div>
           <div className="button-row">
-            <button className="button button-primary" type="submit">
+            <SubmitButton pendingLabel="מסנן רשימה...">
               סינון רשימה
-            </button>
+            </SubmitButton>
             <Link className="button button-secondary" href="/tests/graded">
               ניקוי סינון
             </Link>

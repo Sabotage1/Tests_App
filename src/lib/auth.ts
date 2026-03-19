@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 
 import { nanoid } from "nanoid";
 
@@ -7,13 +8,15 @@ import { SESSION_COOKIE } from "@/lib/constants";
 import { query } from "@/lib/db";
 import type { User } from "@/lib/types";
 
-function mapUser(row: {
+type UserRow = {
   id: string;
   username: string;
   display_name: string;
   email: string | null;
   role: "admin" | "editor" | "viewer";
-}): User {
+};
+
+function mapUser(row: UserRow): User {
   return {
     id: row.id,
     username: row.username,
@@ -23,21 +26,8 @@ function mapUser(row: {
   };
 }
 
-export async function getCurrentUser(): Promise<User | null> {
-  const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
-
-  if (!token) {
-    return null;
-  }
-
-  const result = await query<{
-    id: string;
-    username: string;
-    display_name: string;
-    email: string | null;
-    role: "admin" | "editor" | "viewer";
-  }>(
+const getUserBySessionToken = cache(async (token: string): Promise<User | null> => {
+  const result = await query<UserRow>(
     `
       SELECT u.id, u.username, u.display_name, u.email, u.role
       FROM sessions s
@@ -53,6 +43,17 @@ export async function getCurrentUser(): Promise<User | null> {
   }
 
   return mapUser(row);
+});
+
+export async function getCurrentUser(): Promise<User | null> {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+
+  if (!token) {
+    return null;
+  }
+
+  return getUserBySessionToken(token);
 }
 
 export async function requireUser() {

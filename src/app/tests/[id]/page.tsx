@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { createShareLinkAction, sendGradeEmailAction, updateTestDurationAction } from "@/app/actions";
 import { requireUser } from "@/lib/auth";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { SubmitButton } from "@/components/SubmitButton";
 import { getDefaultTestDurationMinutes, getTestById } from "@/lib/repository";
 
 type TestPageProps = {
@@ -64,9 +65,11 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
         <div className="button-row">
           <form action={createShareLinkAction}>
             <input type="hidden" name="id" value={test.id} />
-            <button className="button button-primary" type="submit">
+            <SubmitButton
+              pendingLabel={test.shareUrl ? "מרענן קישור..." : "יוצר קישור..."}
+            >
               {test.shareUrl ? "רענון קישור מבחן" : "יצירת קישור מבחן"}
-            </button>
+            </SubmitButton>
           </form>
           {test.shareUrl ? <CopyLinkButton path={test.shareUrl} autoCopy={query.reused === "1"} /> : null}
           <Link className="button button-secondary" href={`/print/tests/${test.id}`} target="_blank">
@@ -111,9 +114,9 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
               />
             </label>
             <p className="muted">אם השדה ריק, יוחל שוב זמן ברירת המחדל. אם יוזן 0, לא תהיה מגבלת זמן.</p>
-            <button className="button button-secondary" type="submit">
+            <SubmitButton className="button button-secondary" pendingLabel="מעדכן משך...">
               עדכון משך מבחן
-            </button>
+            </SubmitButton>
           </form>
           {test.shareUrl ? (
             <div className="hero-banner">
@@ -124,9 +127,9 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
           {test.status === "graded" && test.studentEmail ? (
             <form action={sendGradeEmailAction}>
               <input type="hidden" name="testId" value={test.id} />
-              <button className="button button-success" type="submit">
+              <SubmitButton className="button button-success" pendingLabel="שולח מייל...">
                 שליחת ציון והערות במייל
-              </button>
+              </SubmitButton>
             </form>
           ) : null}
         </div>

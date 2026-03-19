@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { startSharedTestAction, submitSharedTestAction } from "@/app/actions";
 import { CountdownTimer } from "@/components/CountdownTimer";
+import { SubmitButton } from "@/components/SubmitButton";
 import { getSharedTestByToken } from "@/lib/repository";
 
 type SharePageProps = {
@@ -59,9 +60,9 @@ export default async function SharePage({ params, searchParams }: SharePageProps
               אימייל
               <input name="studentEmail" type="email" defaultValue={test.studentEmail ?? ""} />
             </label>
-            <button className="button button-primary" type="submit">
+            <SubmitButton pendingLabel="פותח את המבחן...">
               התחלת מבחן
-            </button>
+            </SubmitButton>
           </form>
         </div>
       </div>
@@ -108,9 +109,9 @@ export default async function SharePage({ params, searchParams }: SharePageProps
             </div>
           ))}
         </div>
-        <button className="button button-primary" type="submit">
+        <SubmitButton pendingLabel="שולח את המבחן...">
           שליחת מבחן לבדיקה
-        </button>
+        </SubmitButton>
       </form>
     </div>
   );

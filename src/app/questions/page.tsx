@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { archiveQuestionAction, deleteQuestionAction, saveQuestionAction } from "@/app/actions";
+import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
 import { getQuestionById, getQuestions, getStages, getSubjects } from "@/lib/repository";
 
@@ -89,9 +90,9 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                 ))}
               </div>
             </div>
-            <button className="button button-primary" type="submit">
+            <SubmitButton pendingLabel="שומר שאלה...">
               שמירת שאלה
-            </button>
+            </SubmitButton>
           </form>
         </div>
 
@@ -113,15 +114,15 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                       <>
                         <form action={archiveQuestionAction}>
                           <input name="id" type="hidden" value={question.id} />
-                          <button className="button button-danger" type="submit">
+                          <SubmitButton className="button button-danger" pendingLabel="מארכב שאלה...">
                             ארכוב
-                          </button>
+                          </SubmitButton>
                         </form>
                         <form action={deleteQuestionAction}>
                           <input name="id" type="hidden" value={question.id} />
-                          <button className="button button-danger" type="submit">
+                          <SubmitButton className="button button-danger" pendingLabel="מוחק שאלה...">
                             מחיקה
-                          </button>
+                          </SubmitButton>
                         </form>
                       </>
                     ) : null}

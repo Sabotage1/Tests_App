@@ -8,6 +8,7 @@ import {
   saveUserAction,
   updateUserAction,
 } from "@/app/actions";
+import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
 import { getDefaultTestDurationMinutes, getStages, getSubjects, getUsers } from "@/lib/repository";
 
@@ -69,9 +70,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             </label>
           </div>
           <p className="muted">השארת שדה ריק תשאיר את ערך ברירת המחדל הקיים. ערך 0 יגדיר מבחנים ללא מגבלת זמן.</p>
-          <button className="button button-primary" type="submit">
+          <SubmitButton pendingLabel="שומר ברירת מחדל...">
             שמירת ברירת מחדל
-          </button>
+          </SubmitButton>
         </form>
       </div>
 
@@ -92,9 +93,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               <input name="confirmPassword" type="password" minLength={6} required />
             </label>
           </div>
-          <button className="button button-primary" type="submit">
+          <SubmitButton pendingLabel="מעדכן סיסמה...">
             עדכון סיסמה
-          </button>
+          </SubmitButton>
         </form>
       </div>
 
@@ -111,17 +112,17 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   <input name="name" defaultValue={subject.label} required />
                 </label>
                 <div className="button-row">
-                  <button className="button button-secondary" type="submit">
+                  <SubmitButton className="button button-secondary" pendingLabel="מעדכן נושא...">
                     עדכון
-                  </button>
+                  </SubmitButton>
                   {user.role === "admin" ? (
-                    <button
+                    <SubmitButton
                       className="button button-danger"
-                      type="submit"
                       formAction={deleteLookupAction}
+                      pendingLabel="מוחק נושא..."
                     >
                       מחיקה
-                    </button>
+                    </SubmitButton>
                   ) : null}
                 </div>
               </form>
@@ -132,9 +133,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 הוספת נושא
                 <input name="name" placeholder="נושא חדש" required />
               </label>
-              <button className="button button-primary" type="submit">
+              <SubmitButton pendingLabel="מוסיף נושא...">
                 הוספה
-              </button>
+              </SubmitButton>
             </form>
           </div>
         </div>
@@ -151,17 +152,17 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   <input name="name" defaultValue={stage.label} required />
                 </label>
                 <div className="button-row">
-                  <button className="button button-secondary" type="submit">
+                  <SubmitButton className="button button-secondary" pendingLabel="מעדכן שלב...">
                     עדכון
-                  </button>
+                  </SubmitButton>
                   {user.role === "admin" ? (
-                    <button
+                    <SubmitButton
                       className="button button-danger"
-                      type="submit"
                       formAction={deleteLookupAction}
+                      pendingLabel="מוחק שלב..."
                     >
                       מחיקה
-                    </button>
+                    </SubmitButton>
                   ) : null}
                 </div>
               </form>
@@ -172,9 +173,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 הוספת שלב
                 <input name="name" placeholder="שלב חדש" required />
               </label>
-              <button className="button button-primary" type="submit">
+              <SubmitButton pendingLabel="מוסיף שלב...">
                 הוספה
-              </button>
+              </SubmitButton>
             </form>
           </div>
         </div>
@@ -215,12 +216,16 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                     </label>
                   </div>
                   <div className="button-row">
-                    <button className="button button-secondary" type="submit">
+                    <SubmitButton className="button button-secondary" pendingLabel="שומר משתמש...">
                       שמירת משתמש
-                    </button>
-                    <button className="button button-danger" type="submit" formAction={deleteUserAction}>
+                    </SubmitButton>
+                    <SubmitButton
+                      className="button button-danger"
+                      formAction={deleteUserAction}
+                      pendingLabel="מוחק משתמש..."
+                    >
                       מחיקת משתמש
-                    </button>
+                    </SubmitButton>
                   </div>
                 </form>
               ))}
@@ -257,9 +262,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                     <input name="password" type="password" minLength={6} required />
                   </label>
                 </div>
-                <button className="button button-primary" type="submit">
+                <SubmitButton pendingLabel="מוסיף משתמש...">
                   הוספת משתמש
-                </button>
+                </SubmitButton>
               </form>
             </div>
 
@@ -273,9 +278,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   להקליד לאישור
                   <input name="confirmation" placeholder="מחק הכל" required />
                 </label>
-                <button className="button button-danger" type="submit">
+                <SubmitButton className="button button-danger" pendingLabel="מוחק מבחנים...">
                   מחיקת כל המבחנים
-                </button>
+                </SubmitButton>
               </form>
             </div>
           </div>

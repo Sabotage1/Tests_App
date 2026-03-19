@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { logoutAction } from "@/app/actions";
+import { SubmitButton } from "@/components/SubmitButton";
 import { getCurrentUser } from "@/lib/auth";
 import { APP_NAME, APP_VERSION } from "@/lib/constants";
 
@@ -54,9 +55,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <Link href="/settings">הגדרות</Link>
         </nav>
         <form action={logoutAction}>
-          <button className="button button-secondary" type="submit">
+          <SubmitButton className="button button-secondary" pendingLabel="מתנתק...">
             התנתקות
-          </button>
+          </SubmitButton>
         </form>
         <small className="sidebar-version">גרסה {APP_VERSION}</small>
       </>

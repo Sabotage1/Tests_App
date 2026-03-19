@@ -52,6 +52,7 @@ a {
   position: sticky;
   top: 0;
   height: 100vh;
+  overflow-y: auto;
 }
 
 .sidebar-mobile {
@@ -63,6 +64,11 @@ a {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.sidebar-desktop {
+  flex: 1;
+  min-height: 0;
 }
 
 .brand {
@@ -87,6 +93,7 @@ a {
 .sidebar-version {
   margin-top: auto;
   padding-top: 14px;
+  padding-bottom: 6px;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   line-height: 1.5;
 }
@@ -181,6 +188,15 @@ a {
   align-items: center;
   justify-content: center;
   gap: 8px;
+  transition:
+    transform 0.16s ease,
+    opacity 0.16s ease,
+    background-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.button:not(:disabled):active {
+  transform: translateY(1px);
 }
 
 .button-primary {
@@ -359,6 +375,28 @@ textarea {
 
 .login-card {
   width: min(540px, 100%);
+}
+
+.page-loading {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+}
+
+.page-loading-spinner {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-width: 3px;
+  color: var(--accent);
+}
+
+.page-loading p {
+  margin: 0;
+  max-width: 28rem;
 }
 
 .hero-banner {

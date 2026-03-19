@@ -1,4 +1,5 @@
 import { createTestAction } from "@/app/actions";
+import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
 import { getDefaultTestDurationMinutes, getStages, getSubjects } from "@/lib/repository";
 
@@ -99,9 +100,9 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
             אם לא יוזן זמן, יילקח ערך ברירת המחדל מהמערכת. אם יוזן 0, למבחן לא תהיה מגבלת זמן.
           </p>
 
-          <button className="button button-primary" type="submit">
+          <SubmitButton pendingLabel="יוצר מבחן...">
             יצירת מבחן
-          </button>
+          </SubmitButton>
         </form>
       </div>
     </div>

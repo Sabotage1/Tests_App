@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { resendArchivedTestAction } from "@/app/actions";
+import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
 import type { TestStatus } from "@/lib/constants";
 import { getTests } from "@/lib/repository";
@@ -91,9 +92,9 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
                           <input name="sentAt" type="datetime-local" />
                         </label>
                       </div>
-                      <button className="button button-primary" type="submit">
+                      <SubmitButton pendingLabel="יוצר עותק חדש...">
                         שליחה מחדש
-                      </button>
+                      </SubmitButton>
                     </form>
                   </div>
                 </td>

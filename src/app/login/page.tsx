@@ -1,4 +1,5 @@
 import { loginAction } from "@/app/actions";
+import { SubmitButton } from "@/components/SubmitButton";
 import { APP_NAME } from "@/lib/constants";
 
 type LoginPageProps = {
@@ -27,9 +28,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             סיסמה
             <input name="password" type="password" required />
           </label>
-          <button className="button button-primary" type="submit">
+          <SubmitButton pendingLabel="נכנס למערכת...">
             כניסה למערכת
-          </button>
+          </SubmitButton>
         </form>
       </div>
     </div>
