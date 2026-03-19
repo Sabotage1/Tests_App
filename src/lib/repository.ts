@@ -1,6 +1,5 @@
 import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
-import nodemailer from "nodemailer";
 import type { PoolClient } from "pg";
 
 import { APP_NAME, DEFAULT_DURATION_MINUTES, MISSING_ANSWER_TEXT } from "@/lib/constants";
@@ -59,6 +58,40 @@ function getAppBaseUrl() {
     process.env.NEXT_PUBLIC_APP_URL?.trim() ||
     null
   );
+}
+
+function getMailFrom() {
+  const senderEmail = process.env.BREVO_SENDER_EMAIL?.trim();
+
+  if (!senderEmail) {
+    throw new Error("יש להגדיר BREVO_SENDER_EMAIL כדי לשלוח מיילים.");
+  }
+
+  const name = process.env.BREVO_SENDER_NAME?.trim() || APP_NAME;
+  return {
+    email: senderEmail,
+    name,
+  };
+}
+
+function getMailFromAddress() {
+  const senderEmail = process.env.BREVO_SENDER_EMAIL?.trim();
+
+  if (!senderEmail) {
+    throw new Error("יש להגדיר BREVO_SENDER_EMAIL כדי לשלוח מיילים.");
+  }
+
+  return senderEmail;
+}
+
+function getBrevoApiKey() {
+  const apiKey = process.env.BREVO_API_KEY?.trim();
+
+  if (!apiKey) {
+    throw new Error("יש להגדיר BREVO_API_KEY כדי לשלוח מיילים.");
+  }
+
+  return apiKey;
 }
 
 async function syncQuestionLinks(
@@ -1065,6 +1098,36 @@ function buildGradeEmailHtml(test: TestDetails) {
   `;
 }
 
+function buildTestInvitationEmailHtml(test: TestDetails, shareUrl: string) {
+  const studentName = test.studentName ? escapeHtml(test.studentName) : "נבחן/ת";
+  const sentAt = test.sentAt ? new Date(test.sentAt).toLocaleString("he-IL") : "מיידית";
+  const durationLabel =
+    test.durationMinutes === 0 ? "ללא מגבלת זמן" : `${test.durationMinutes} דקות`;
+
+  return `
+    <div dir="rtl" style="font-family:Arial,sans-serif;background:#f5f7fb;padding:24px">
+      <div style="max-width:720px;margin:0 auto;background:white;padding:24px;border-radius:18px">
+        <h1 style="margin-top:0">הוזמנת למבחן</h1>
+        <p>שלום ${studentName},</p>
+        <p>נשלח אליך מבחן חדש מתוך ${escapeHtml(APP_NAME)}.</p>
+        <p><strong>שם המבחן:</strong> ${escapeHtml(test.title)}</p>
+        <p><strong>משך המבחן:</strong> ${escapeHtml(durationLabel)}</p>
+        <p><strong>מועד שליחה:</strong> ${escapeHtml(sentAt)}</p>
+        <p style="margin-top:24px">
+          <a
+            href="${escapeHtml(shareUrl)}"
+            style="display:inline-block;padding:12px 18px;border-radius:999px;background:#0070a8;color:#ffffff;text-decoration:none;font-weight:700"
+          >
+            לפתיחת המבחן
+          </a>
+        </p>
+        <p style="margin-top:16px;color:#5a6c80">אם הכפתור לא נפתח, אפשר להעתיק את הקישור הבא:</p>
+        <p style="word-break:break-all">${escapeHtml(shareUrl)}</p>
+      </div>
+    </div>
+  `;
+}
+
 function buildReviewNotificationEmailHtml(test: TestDetails, reviewUrl: string | null) {
   const studentName = test.studentName ? escapeHtml(test.studentName) : "לא הוזן";
   const studentEmail = test.studentEmail ? escapeHtml(test.studentEmail) : "לא הוזן";
@@ -1098,36 +1161,43 @@ function buildReviewNotificationEmailHtml(test: TestDetails, reviewUrl: string |
   `;
 }
 
-async function sendResendEmail(input: {
+async function sendSystemEmail(input: {
   to: string[];
   subject: string;
   html: string;
-  idempotencyKey?: string;
 }) {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-
-  if (!apiKey) {
-    throw new Error("יש להגדיר RESEND_API_KEY כדי לשלוח התראות.");
+  if (input.to.length === 0) {
+    return;
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
+  const normalizedRecipients = input.to.map((address) => address.trim()).filter(Boolean);
+  const sender = getMailFrom();
+
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      ...(input.idempotencyKey ? { "Idempotency-Key": input.idempotencyKey } : {}),
+      accept: "application/json",
+      "content-type": "application/json",
+      "api-key": getBrevoApiKey(),
     },
     body: JSON.stringify({
-      from: process.env.RESEND_FROM?.trim() || `${APP_NAME} <onboarding@resend.dev>`,
-      to: input.to,
+      sender,
+      to:
+        normalizedRecipients.length === 1
+          ? [{ email: normalizedRecipients[0] }]
+          : [{ email: getMailFromAddress(), name: sender.name }],
+      bcc:
+        normalizedRecipients.length > 1
+          ? normalizedRecipients.map((email) => ({ email }))
+          : undefined,
       subject: input.subject,
-      html: input.html,
+      htmlContent: input.html,
     }),
   });
 
   if (!response.ok) {
     const responseText = await response.text();
-    throw new Error(`שליחת ההתראה דרך Resend נכשלה: ${response.status} ${responseText}`);
+    throw new Error(`שליחת המייל דרך Brevo נכשלה: ${response.status} ${responseText}`);
   }
 }
 
@@ -1156,11 +1226,36 @@ export async function sendReviewNotificationEmails(testId: string) {
   const baseUrl = getAppBaseUrl();
   const reviewUrl = baseUrl ? `${baseUrl.replace(/\/$/, "")}/tests/${test.id}/grade` : null;
 
-  await sendResendEmail({
+  await sendSystemEmail({
     to: recipients,
     subject: `מבחן חדש לבדיקה: ${test.title}`,
     html: buildReviewNotificationEmailHtml(test, reviewUrl),
-    idempotencyKey: `review-notification:${test.id}:${test.submittedAt ?? "pending"}`,
+  });
+}
+
+export async function sendTestInvitationEmail(testId: string) {
+  const shareToken = await ensureShareToken(testId);
+  const test = await getTestById(testId);
+
+  if (!test) {
+    throw new Error("המבחן לא נמצא.");
+  }
+
+  if (!test.studentEmail) {
+    throw new Error("לא מוגדרת כתובת מייל לחניך.");
+  }
+
+  const baseUrl = getAppBaseUrl();
+  if (!baseUrl) {
+    throw new Error("יש להגדיר APP_BASE_URL כדי לשלוח קישור מבחן במייל.");
+  }
+
+  const shareUrl = `${baseUrl.replace(/\/$/, "")}/share/${shareToken}`;
+
+  await sendSystemEmail({
+    to: [test.studentEmail],
+    subject: `מבחן חדש: ${test.title}`,
+    html: buildTestInvitationEmailHtml(test, shareUrl),
   });
 }
 
@@ -1174,22 +1269,24 @@ export async function sendGradeEmail(testId: string) {
     throw new Error("לא מוגדרת כתובת מייל לתלמיד.");
   }
 
-  if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
-    throw new Error("יש להגדיר GMAIL_USER ו-GMAIL_APP_PASSWORD כדי לשלוח ציונים.");
-  }
-
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
+  const sender = getMailFrom();
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      "api-key": getBrevoApiKey(),
     },
+    body: JSON.stringify({
+      sender,
+      to: [{ email: test.studentEmail }],
+      subject: `תוצאות מבחן: ${test.title}`,
+      htmlContent: buildGradeEmailHtml(test),
+    }),
   });
 
-  await transporter.sendMail({
-    from: process.env.GMAIL_USER,
-    to: test.studentEmail,
-    subject: `תוצאות מבחן: ${test.title}`,
-    html: buildGradeEmailHtml(test),
-  });
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(`שליחת הציון דרך Brevo נכשלה: ${response.status} ${responseText}`);
+  }
 }

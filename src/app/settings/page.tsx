@@ -221,7 +221,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                         type="checkbox"
                         defaultChecked={item.reviewNotificationsEnabled}
                       />
-                      קבלת התראות על מבחנים לבדיקה
+                      שלח התראות
                     </label>
                   </div>
                   <div className="button-row">
@@ -272,7 +272,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   </label>
                   <label className="checkbox-card">
                     <input name="reviewNotificationsEnabled" type="checkbox" />
-                    קבלת התראות על מבחנים לבדיקה
+                    שלח התראות
                   </label>
                 </div>
                 <SubmitButton pendingLabel="מוסיף משתמש...">

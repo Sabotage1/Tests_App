@@ -21,6 +21,7 @@ import {
   getDefaultTestDurationMinutes,
   sendGradeEmail,
   sendReviewNotificationEmails,
+  sendTestInvitationEmail,
   setDefaultTestDurationMinutes,
   startTestByToken,
   submitTestByToken,
@@ -437,5 +438,20 @@ export async function sendGradeEmailAction(formData: FormData) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "שליחת המייל נכשלה";
     redirect(`/tests/${testId}?mailError=${encodeURIComponent(message)}`);
+  }
+}
+
+export async function sendTestInvitationEmailAction(formData: FormData) {
+  await requireEditor();
+  const testId = formData.get("testId")?.toString() ?? "";
+
+  try {
+    await sendTestInvitationEmail(testId);
+    revalidatePath(`/tests/${testId}`);
+    revalidatePath("/dashboard");
+    redirect(`/tests/${testId}?inviteMail=sent`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "שליחת המבחן במייל נכשלה";
+    redirect(`/tests/${testId}?inviteMailError=${encodeURIComponent(message)}`);
   }
 }

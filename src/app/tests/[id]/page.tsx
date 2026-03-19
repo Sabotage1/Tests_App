@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { createShareLinkAction, sendGradeEmailAction, updateTestDurationAction } from "@/app/actions";
+import {
+  createShareLinkAction,
+  sendGradeEmailAction,
+  sendTestInvitationEmailAction,
+  updateTestDurationAction,
+} from "@/app/actions";
 import { requireUser } from "@/lib/auth";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -9,7 +14,14 @@ import { getDefaultTestDurationMinutes, getTestById } from "@/lib/repository";
 
 type TestPageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ durationSaved?: string; mail?: string; mailError?: string; reused?: string }>;
+  searchParams: Promise<{
+    durationSaved?: string;
+    mail?: string;
+    mailError?: string;
+    inviteMail?: string;
+    inviteMailError?: string;
+    reused?: string;
+  }>;
 };
 
 const STATUS_LABELS = {
@@ -83,6 +95,8 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
 
       {query.mail === "sent" ? <div className="alert">המייל נשלח בהצלחה.</div> : null}
       {query.mailError ? <div className="alert">{query.mailError}</div> : null}
+      {query.inviteMail === "sent" ? <div className="alert">קישור המבחן נשלח בהצלחה לחניך.</div> : null}
+      {query.inviteMailError ? <div className="alert">{query.inviteMailError}</div> : null}
       {query.durationSaved ? <div className="alert">משך המבחן עודכן.</div> : null}
       {query.reused === "1" ? <div className="alert">נוצר מבחן חדש והקישור לתלמיד הועתק אוטומטית.</div> : null}
 
@@ -123,6 +137,19 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
               <strong>קישור ייחודי לתלמיד</strong>
               <p>{test.shareUrl}</p>
             </div>
+          ) : null}
+          <form action={sendTestInvitationEmailAction}>
+            <input type="hidden" name="testId" value={test.id} />
+            <SubmitButton
+              className="button button-success"
+              pendingLabel="שולח מבחן במייל..."
+              disabled={!test.studentEmail}
+            >
+              שליחת המבחן במייל לחניך
+            </SubmitButton>
+          </form>
+          {!test.studentEmail ? (
+            <p className="muted">כדי לשלוח את המבחן במייל, יש להזין כתובת מייל לחניך במבחן.</p>
           ) : null}
           {test.status === "graded" && test.studentEmail ? (
             <form action={sendGradeEmailAction}>

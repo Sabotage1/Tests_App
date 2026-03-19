@@ -58,7 +58,7 @@ export default async function SharePage({ params, searchParams }: SharePageProps
             </label>
             <label>
               אימייל
-              <input name="studentEmail" type="email" defaultValue={test.studentEmail ?? ""} />
+              <input name="studentEmail" type="email" defaultValue={test.studentEmail ?? ""} required />
             </label>
             <SubmitButton pendingLabel="פותח את המבחן...">
               התחלת מבחן
