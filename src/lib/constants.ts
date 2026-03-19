@@ -6,20 +6,6 @@ export const SESSION_COOKIE = "atc_session";
 export const DEFAULT_DURATION_MINUTES = 90;
 export const MISSING_ANSWER_TEXT = "צריך להוסיף תשובה לשאלה";
 
-export const DEFAULT_ADMIN = {
-  username: "roy",
-  displayName: "Roy",
-  password: "Roy123!",
-  role: "admin" as const,
-};
-
-export const DEFAULT_EDITOR = {
-  username: "neta",
-  displayName: "Neta",
-  password: "Neta123!",
-  role: "editor" as const,
-};
-
 export const INITIAL_STAGES = [
   "מבחן מסכם הסבת קרקע",
   "מבמכ מסכם הסבת TWR",

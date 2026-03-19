@@ -88,6 +88,7 @@ export async function createSession(userId: string) {
   const token = nanoid(32);
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 1000 * 60 * 60 * 24 * 14);
+  const isProduction = process.env.NODE_ENV === "production";
 
   await query(
     `
@@ -101,6 +102,7 @@ export async function createSession(userId: string) {
   store.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
+    secure: isProduction,
     path: "/",
     expires: expiresAt,
   });
@@ -109,6 +111,7 @@ export async function createSession(userId: string) {
 export async function clearSession() {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
+  const isProduction = process.env.NODE_ENV === "production";
   if (token) {
     await query("DELETE FROM sessions WHERE token = $1", [token]);
   }
@@ -116,6 +119,7 @@ export async function clearSession() {
   store.set(SESSION_COOKIE, "", {
     httpOnly: true,
     sameSite: "lax",
+    secure: isProduction,
     path: "/",
     expires: new Date(0),
   });

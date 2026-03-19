@@ -6,7 +6,7 @@ import { getSharedTestByToken } from "@/lib/repository";
 
 type SharePageProps = {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ submitted?: string }>;
+  searchParams: Promise<{ submitted?: string; error?: string }>;
 };
 
 export default async function SharePage({ params, searchParams }: SharePageProps) {
@@ -24,6 +24,7 @@ export default async function SharePage({ params, searchParams }: SharePageProps
         <div className="card login-card">
           <h2>המבחן הוגש</h2>
           <p>התשובות נשמרו במערכת והועברו לבדיקה.</p>
+          {query.error ? <div className="alert">{query.error}</div> : null}
           <p className="muted">
             {test.submittedAt
               ? `מועד הגשה: ${new Date(test.submittedAt).toLocaleString("he-IL")}`
@@ -39,6 +40,7 @@ export default async function SharePage({ params, searchParams }: SharePageProps
       <div className="login-wrap">
         <div className="card login-card">
           <h2>{test.title}</h2>
+          {query.error ? <div className="alert">{query.error}</div> : null}
           <p className="muted">
             {test.sentAt ? `תאריך ושעת שליחה: ${new Date(test.sentAt).toLocaleString("he-IL")}` : null}
           </p>
@@ -73,6 +75,7 @@ export default async function SharePage({ params, searchParams }: SharePageProps
 
   return (
     <div className="content" style={{ maxWidth: 960, margin: "0 auto" }}>
+      {query.error ? <div className="alert">{query.error}</div> : null}
       <div className="page-header">
         <div>
           <h2>{test.title}</h2>

@@ -45,10 +45,10 @@ a {
 .sidebar {
   background: linear-gradient(180deg, #08203a, #12375a 54%, #1a4a69);
   color: white;
-  padding: 28px 22px;
+  padding: 32px 24px;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 22px;
   position: sticky;
   top: 0;
   height: 100vh;
@@ -58,10 +58,18 @@ a {
   display: none;
 }
 
+.sidebar-desktop,
+.sidebar-mobile-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
 .brand {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  padding-bottom: 6px;
 }
 
 .brand h1 {
@@ -73,23 +81,27 @@ a {
 .sidebar small {
   margin: 0;
   color: rgba(255, 255, 255, 0.78);
+  line-height: 1.5;
 }
 
 .sidebar-version {
   margin-top: auto;
-  padding-top: 10px;
+  padding-top: 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
+  line-height: 1.5;
 }
 
 .nav {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .nav a {
-  padding: 12px 14px;
+  display: block;
+  padding: 14px 16px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.08);
+  line-height: 1.45;
 }
 
 .nav a:hover {

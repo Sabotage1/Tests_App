@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { archiveQuestionAction, saveQuestionAction } from "@/app/actions";
+import { archiveQuestionAction, deleteQuestionAction, saveQuestionAction } from "@/app/actions";
 import { requireUser } from "@/lib/auth";
 import { getQuestionById, getQuestions, getStages, getSubjects } from "@/lib/repository";
 
@@ -110,12 +110,20 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                       עריכה
                     </Link>
                     {user.role === "admin" ? (
-                      <form action={archiveQuestionAction}>
-                        <input name="id" type="hidden" value={question.id} />
-                        <button className="button button-danger" type="submit">
-                          ארכוב
-                        </button>
-                      </form>
+                      <>
+                        <form action={archiveQuestionAction}>
+                          <input name="id" type="hidden" value={question.id} />
+                          <button className="button button-danger" type="submit">
+                            ארכוב
+                          </button>
+                        </form>
+                        <form action={deleteQuestionAction}>
+                          <input name="id" type="hidden" value={question.id} />
+                          <button className="button button-danger" type="submit">
+                            מחיקה
+                          </button>
+                        </form>
+                      </>
                     ) : null}
                   </div>
                 </div>

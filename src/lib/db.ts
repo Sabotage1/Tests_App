@@ -2,8 +2,13 @@ import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 
-import { DEFAULT_ADMIN, DEFAULT_DURATION_MINUTES, DEFAULT_EDITOR } from "@/lib/constants";
+import { DEFAULT_DURATION_MINUTES } from "@/lib/constants";
 import { getSeedQuestions, getSeedStages, getSeedSubjects } from "@/lib/seed";
+
+const DEVELOPMENT_INITIAL_USERS = [
+  { username: "roy", displayName: "Roy", password: "Roy123!", role: "admin" as const },
+  { username: "neta", displayName: "Neta", password: "Neta123!", role: "editor" as const },
+];
 
 declare global {
   // eslint-disable-next-line no-var
@@ -15,23 +20,45 @@ declare global {
 const connectionString =
   process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:55432/atc_tests";
 
-async function backfillViewerRole(client: PoolClient) {
-  const result = await client.query<{ count: string }>(
-    "SELECT COUNT(*)::text AS count FROM users WHERE role = 'viewer'",
-  );
-
-  if (Number(result.rows[0]?.count ?? 0) > 0) {
-    return;
+function getInitialUsers() {
+  if (process.env.NODE_ENV !== "production") {
+    return DEVELOPMENT_INITIAL_USERS;
   }
 
-  await client.query(
-    `
-      INSERT INTO users (id, username, display_name, email, role, password_hash, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW())
-      ON CONFLICT (username) DO NOTHING
-    `,
-    [nanoid(), "viewer", "צופה", null, "viewer", bcrypt.hashSync("Viewer123!", 10)],
-  );
+  const users: Array<{
+    username: string;
+    displayName: string;
+    password: string;
+    role: "admin" | "editor";
+  }> = [];
+
+  const adminUsername = process.env.INITIAL_ADMIN_USERNAME?.trim().toLowerCase();
+  const adminPassword = process.env.INITIAL_ADMIN_PASSWORD?.trim();
+  const adminDisplayName = process.env.INITIAL_ADMIN_DISPLAY_NAME?.trim() || "Admin";
+
+  if (adminUsername && adminPassword) {
+    users.push({
+      username: adminUsername,
+      displayName: adminDisplayName,
+      password: adminPassword,
+      role: "admin",
+    });
+  }
+
+  const editorUsername = process.env.INITIAL_EDITOR_USERNAME?.trim().toLowerCase();
+  const editorPassword = process.env.INITIAL_EDITOR_PASSWORD?.trim();
+  const editorDisplayName = process.env.INITIAL_EDITOR_DISPLAY_NAME?.trim() || "Editor";
+
+  if (editorUsername && editorPassword) {
+    users.push({
+      username: editorUsername,
+      displayName: editorDisplayName,
+      password: editorPassword,
+      role: "editor",
+    });
+  }
+
+  return users;
 }
 
 function getPool() {
@@ -153,6 +180,11 @@ async function seedUsers(client: PoolClient) {
     return;
   }
 
+  const initialUsers = getInitialUsers();
+  if (initialUsers.length === 0) {
+    return;
+  }
+
   const now = new Date();
   const insertQuery = `
     INSERT INTO users (id, username, display_name, email, role, password_hash, created_at)
@@ -160,7 +192,7 @@ async function seedUsers(client: PoolClient) {
     ON CONFLICT (username) DO NOTHING
   `;
 
-  for (const user of [DEFAULT_ADMIN, DEFAULT_EDITOR]) {
+  for (const user of initialUsers) {
     await client.query(insertQuery, [
       nanoid(),
       user.username,
@@ -171,8 +203,6 @@ async function seedUsers(client: PoolClient) {
       now,
     ]);
   }
-
-  await backfillViewerRole(client);
 }
 
 async function seedLookupTable(client: PoolClient, table: "subjects" | "stages", values: string[]) {

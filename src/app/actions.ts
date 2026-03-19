@@ -12,6 +12,9 @@ import {
   cloneTestForNewStudent,
   createTest,
   createUser,
+  deleteLookup,
+  deleteQuestion,
+  deleteUser,
   deleteAllTests,
   ensureShareToken,
   gradeTest,
@@ -82,6 +85,18 @@ export async function archiveQuestionAction(formData: FormData) {
   redirect("/questions");
 }
 
+export async function deleteQuestionAction(formData: FormData) {
+  await requireAdmin();
+  const id = formData.get("id")?.toString();
+  if (!id) {
+    redirect("/questions");
+  }
+
+  await deleteQuestion(id);
+  revalidatePath("/questions");
+  redirect("/questions");
+}
+
 export async function saveLookupAction(formData: FormData) {
   await requireEditor();
   const type = formData.get("type")?.toString();
@@ -92,7 +107,29 @@ export async function saveLookupAction(formData: FormData) {
     redirect("/settings");
   }
 
-  await upsertLookup(type, id, name);
+  try {
+    await upsertLookup(type, id, name);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "שמירת הערך נכשלה";
+    redirect(`/settings?lookupError=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/questions");
+  revalidatePath("/tests/new");
+  redirect("/settings");
+}
+
+export async function deleteLookupAction(formData: FormData) {
+  await requireAdmin();
+  const type = formData.get("type")?.toString();
+  const id = formData.get("id")?.toString();
+
+  if ((type !== "subjects" && type !== "stages") || !id) {
+    redirect("/settings");
+  }
+
+  await deleteLookup(type, id);
   revalidatePath("/settings");
   revalidatePath("/questions");
   revalidatePath("/tests/new");
@@ -112,6 +149,24 @@ export async function saveUserAction(formData: FormData) {
 
   revalidatePath("/settings");
   redirect("/settings");
+}
+
+export async function deleteUserAction(formData: FormData) {
+  const currentUser = await requireAdmin();
+  const id = formData.get("id")?.toString() ?? "";
+
+  try {
+    await deleteUser({
+      id,
+      actingUserId: currentUser.id,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "מחיקת המשתמש נכשלה";
+    redirect(`/settings?userDeleteError=${encodeURIComponent(message)}`);
+  }
+
+  revalidatePath("/settings");
+  redirect("/settings?userDeleted=1");
 }
 
 export async function deleteAllTestsAction(formData: FormData) {
@@ -271,11 +326,17 @@ export async function updateTestDurationAction(formData: FormData) {
 
 export async function startSharedTestAction(formData: FormData) {
   const token = formData.get("token")?.toString() ?? "";
-  await startTestByToken(
-    token,
-    formData.get("studentName")?.toString() ?? "",
-    formData.get("studentEmail")?.toString() ?? "",
-  );
+  try {
+    await startTestByToken(
+      token,
+      formData.get("studentName")?.toString() ?? "",
+      formData.get("studentEmail")?.toString() ?? "",
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "התחלת המבחן נכשלה";
+    redirect(`/share/${token}?error=${encodeURIComponent(message)}`);
+  }
+
   redirect(`/share/${token}`);
 }
 
@@ -287,12 +348,17 @@ export async function submitSharedTestAction(formData: FormData) {
     answer: formData.get(`answer:${id}`)?.toString() ?? "",
   }));
 
-  await submitTestByToken({
-    token,
-    answers,
-    studentName: formData.get("studentName")?.toString() ?? "",
-    studentEmail: formData.get("studentEmail")?.toString() ?? "",
-  });
+  try {
+    await submitTestByToken({
+      token,
+      answers,
+      studentName: formData.get("studentName")?.toString() ?? "",
+      studentEmail: formData.get("studentEmail")?.toString() ?? "",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "שליחת המבחן נכשלה";
+    redirect(`/share/${token}?error=${encodeURIComponent(message)}`);
+  }
 
   redirect(`/share/${token}?submitted=1`);
 }

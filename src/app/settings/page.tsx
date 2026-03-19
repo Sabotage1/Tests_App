@@ -1,6 +1,8 @@
 import {
   changeOwnPasswordAction,
   deleteAllTestsAction,
+  deleteLookupAction,
+  deleteUserAction,
   saveDefaultDurationAction,
   saveLookupAction,
   saveUserAction,
@@ -15,8 +17,11 @@ type SettingsPageProps = {
     passwordSaved?: string;
     passwordError?: string;
     userSaved?: string;
+    userDeleted?: string;
+    userDeleteError?: string;
     testsCleared?: string;
     testsClearError?: string;
+    lookupError?: string;
   }>;
 };
 
@@ -43,8 +48,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       {params.passwordSaved ? <div className="alert">הסיסמה עודכנה בהצלחה.</div> : null}
       {params.passwordError ? <div className="alert">עדכון הסיסמה נכשל. בדוק את הסיסמה הנוכחית ואת האימות.</div> : null}
       {params.userSaved ? <div className="alert">פרטי המשתמש נשמרו.</div> : null}
+      {params.userDeleted ? <div className="alert">המשתמש נמחק מהמערכת.</div> : null}
+      {params.userDeleteError ? <div className="alert">{params.userDeleteError}</div> : null}
       {params.testsCleared ? <div className="alert">כל המבחנים נמחקו מהמערכת.</div> : null}
       {params.testsClearError ? <div className="alert">כדי למחוק את כל המבחנים יש להקליד בדיוק: מחק הכל</div> : null}
+      {params.lookupError ? <div className="alert">{params.lookupError}</div> : null}
 
       <div className="card">
         <h3>ברירת מחדל למשך מבחן</h3>
@@ -102,9 +110,20 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   שם הנושא
                   <input name="name" defaultValue={subject.label} required />
                 </label>
-                <button className="button button-secondary" type="submit">
-                  עדכון
-                </button>
+                <div className="button-row">
+                  <button className="button button-secondary" type="submit">
+                    עדכון
+                  </button>
+                  {user.role === "admin" ? (
+                    <button
+                      className="button button-danger"
+                      type="submit"
+                      formAction={deleteLookupAction}
+                    >
+                      מחיקה
+                    </button>
+                  ) : null}
+                </div>
               </form>
             ))}
             <form action={saveLookupAction}>
@@ -131,9 +150,20 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   שם השלב
                   <input name="name" defaultValue={stage.label} required />
                 </label>
-                <button className="button button-secondary" type="submit">
-                  עדכון
-                </button>
+                <div className="button-row">
+                  <button className="button button-secondary" type="submit">
+                    עדכון
+                  </button>
+                  {user.role === "admin" ? (
+                    <button
+                      className="button button-danger"
+                      type="submit"
+                      formAction={deleteLookupAction}
+                    >
+                      מחיקה
+                    </button>
+                  ) : null}
+                </div>
               </form>
             ))}
             <form action={saveLookupAction}>
@@ -184,9 +214,14 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                       <input name="password" type="password" placeholder="להשאיר ריק ללא שינוי" />
                     </label>
                   </div>
-                  <button className="button button-secondary" type="submit">
-                    שמירת משתמש
-                  </button>
+                  <div className="button-row">
+                    <button className="button button-secondary" type="submit">
+                      שמירת משתמש
+                    </button>
+                    <button className="button button-danger" type="submit" formAction={deleteUserAction}>
+                      מחיקת משתמש
+                    </button>
+                  </div>
                 </form>
               ))}
             </div>

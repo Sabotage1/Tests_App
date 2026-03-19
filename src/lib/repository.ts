@@ -161,6 +161,41 @@ export async function createUser(input: {
   );
 }
 
+export async function deleteUser(input: { id: string; actingUserId: string }) {
+  if (input.id === input.actingUserId) {
+    throw new Error("לא ניתן למחוק את המשתמש שמחובר כרגע.");
+  }
+
+  const userResult = await query<{ role: "admin" | "editor" | "viewer" }>(
+    "SELECT role FROM users WHERE id = $1",
+    [input.id],
+  );
+  const user = userResult.rows[0];
+
+  if (!user) {
+    throw new Error("המשתמש לא נמצא.");
+  }
+
+  if (user.role === "admin") {
+    const adminsResult = await query<{ count: string }>(
+      "SELECT COUNT(*)::text AS count FROM users WHERE role = 'admin'",
+    );
+    if (Number(adminsResult.rows[0]?.count ?? 0) <= 1) {
+      throw new Error("לא ניתן למחוק את האדמין האחרון במערכת.");
+    }
+  }
+
+  const testsResult = await query<{ count: string }>(
+    "SELECT COUNT(*)::text AS count FROM tests WHERE created_by = $1",
+    [input.id],
+  );
+  if (Number(testsResult.rows[0]?.count ?? 0) > 0) {
+    throw new Error("לא ניתן למחוק משתמש שכבר יצר מבחנים. מחק או נקה את המבחנים שלו קודם.");
+  }
+
+  await query("DELETE FROM users WHERE id = $1", [input.id]);
+}
+
 export async function updateUser(input: {
   id: string;
   username: string;
@@ -235,15 +270,30 @@ export async function changeUserPassword(input: {
 }
 
 export async function upsertLookup(type: "subjects" | "stages", id: string | null, name: string) {
+  const normalizedName = name.trim();
+  const existingResult = await query<{ id: string }>(
+    `SELECT id FROM ${type} WHERE LOWER(name) = LOWER($1)`,
+    [normalizedName],
+  );
+  const existing = existingResult.rows[0];
+
+  if (existing && existing.id !== id) {
+    throw new Error("השם הזה כבר קיים במערכת.");
+  }
+
   if (id) {
-    await query(`UPDATE ${type} SET name = $1, updated_at = NOW() WHERE id = $2`, [name.trim(), id]);
+    await query(`UPDATE ${type} SET name = $1, updated_at = NOW() WHERE id = $2`, [normalizedName, id]);
     return;
   }
 
   await query(
     `INSERT INTO ${type} (id, name, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) ON CONFLICT (name) DO NOTHING`,
-    [nanoid(), name.trim()],
+    [nanoid(), normalizedName],
   );
+}
+
+export async function deleteLookup(type: "subjects" | "stages", id: string) {
+  await query(`DELETE FROM ${type} WHERE id = $1`, [id]);
 }
 
 export async function getQuestionById(id: string) {
@@ -365,6 +415,10 @@ export async function upsertQuestion(input: {
 
 export async function archiveQuestion(id: string) {
   await query("UPDATE questions SET is_active = FALSE, updated_at = NOW() WHERE id = $1", [id]);
+}
+
+export async function deleteQuestion(id: string) {
+  await query("DELETE FROM questions WHERE id = $1", [id]);
 }
 
 export async function getDashboardStats() {
@@ -811,7 +865,7 @@ export async function getSharedTestByToken(token: string) {
 }
 
 export async function startTestByToken(token: string, studentName?: string, studentEmail?: string) {
-  await query(
+  const result = await query(
     `
       UPDATE tests
       SET started_at = COALESCE(started_at, NOW()),
@@ -819,9 +873,15 @@ export async function startTestByToken(token: string, studentName?: string, stud
           student_email = COALESCE(NULLIF($2, ''), student_email),
           updated_at = NOW()
       WHERE share_token = $3
+        AND status IN ('generated', 'sent')
+      RETURNING id
     `,
     [studentName?.trim() ?? "", studentEmail?.trim() ?? "", token],
   );
+
+  if (result.rowCount === 0) {
+    throw new Error("לא ניתן להתחיל מבחן שכבר הוגש או נבדק.");
+  }
 }
 
 export async function submitTestByToken(input: {
@@ -831,11 +891,46 @@ export async function submitTestByToken(input: {
   studentEmail?: string;
 }) {
   await withTransaction(async (client) => {
+    const testResult = await client.query<{
+      id: string;
+      status: string;
+      started_at: string | null;
+      duration_minutes: number;
+    }>(
+      `
+        SELECT id, status, started_at::text, duration_minutes
+        FROM tests
+        WHERE share_token = $1
+        FOR UPDATE
+      `,
+      [input.token],
+    );
+
+    const test = testResult.rows[0];
+    if (!test) {
+      throw new Error("המבחן לא נמצא.");
+    }
+
+    if (test.status === "completed" || test.status === "graded") {
+      throw new Error("המבחן כבר הוגש ולא ניתן לשלוח אותו שוב.");
+    }
+
+    if (test.duration_minutes > 0 && test.started_at) {
+      const deadline = new Date(test.started_at).getTime() + test.duration_minutes * 60 * 1000;
+      if (Date.now() > deadline) {
+        throw new Error("זמן המבחן הסתיים ולא ניתן להגיש אותו יותר.");
+      }
+    }
+
     for (const answer of input.answers) {
-      await client.query("UPDATE test_questions SET student_answer = $1 WHERE id = $2", [
-        answer.answer.trim(),
-        answer.id,
-      ]);
+      const updateResult = await client.query(
+        "UPDATE test_questions SET student_answer = $1 WHERE id = $2 AND test_id = $3",
+        [answer.answer.trim(), answer.id, test.id],
+      );
+
+      if (updateResult.rowCount === 0) {
+        throw new Error("נשלחו תשובות לא תקינות עבור מבחן זה.");
+      }
     }
 
     await client.query(
@@ -846,9 +941,9 @@ export async function submitTestByToken(input: {
             student_name = COALESCE(NULLIF($1, ''), student_name),
             student_email = COALESCE(NULLIF($2, ''), student_email),
             updated_at = NOW()
-        WHERE share_token = $3
+        WHERE id = $3
       `,
-      [input.studentName?.trim() ?? "", input.studentEmail?.trim() ?? "", input.token],
+      [input.studentName?.trim() ?? "", input.studentEmail?.trim() ?? "", test.id],
     );
   });
 }
