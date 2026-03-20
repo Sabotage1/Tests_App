@@ -31,7 +31,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       <div className="grid grid-2">
         <div className="card">
           <h3>{editingQuestion ? "עריכת שאלה" : "הוספת שאלה חדשה"}</h3>
-          <form action={saveQuestionAction}>
+          <form action={saveQuestionAction} key={editingQuestion?.id ?? "new-question"}>
             <input name="id" type="hidden" defaultValue={editingQuestion?.id} />
             <label>
               נוסח השאלה
@@ -44,7 +44,10 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
             <div className="split">
               <label>
                 סוג שאלה
-                <select name="questionType" defaultValue={editingQuestion?.questionType ?? "open"}>
+                <select
+                  name="questionType"
+                  defaultValue={editingQuestion?.questionType === "multiple_choice" ? "multiple_choice" : "open"}
+                >
                   <option value="open">פתוחה</option>
                   <option value="multiple_choice">רב ברירה</option>
                 </select>
