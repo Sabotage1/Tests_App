@@ -1,10 +1,13 @@
+import Link from "next/link";
+
 import { createTestAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
+import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
 import { getDefaultTestDurationMinutes, getQuestions, getStages, getSubjects } from "@/lib/repository";
 
 type NewTestPageProps = {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; unit?: string }>;
 };
 
 export default async function NewTestPage({ searchParams }: NewTestPageProps) {
@@ -16,23 +19,37 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
     getDefaultTestDurationMinutes(),
     getQuestions(),
   ]);
-  const activeQuestions = questions.filter((question) => question.isActive === 1);
+  const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
+  const activeQuestions = questions.filter((question) => question.isActive === 1 && question.unit === selectedUnit);
 
   return (
     <div className="stack">
       <div className="page-header">
         <div>
           <h2>יצירת מבחן חדש</h2>
-          <p>בחר כמות שאלות, סינון לפי נושאים ושלבים, או בחירה ידנית ישירה ממאגר השאלות.</p>
+          <p>בחר יחידה, ואז בנה מבחן אקראי או ידני רק מהשאלות הרלוונטיות לאותה יחידה.</p>
         </div>
+      </div>
+      <div className="button-row">
+        <Link className={selectedUnit === "vfr" ? "button" : "button button-secondary"} href="/tests/new?unit=vfr">
+          {QUESTION_UNIT_LABELS.vfr}
+        </Link>
+        <Link className={selectedUnit === "ifr" ? "button" : "button button-secondary"} href="/tests/new?unit=ifr">
+          {QUESTION_UNIT_LABELS.ifr}
+        </Link>
       </div>
       {params.error ? <div className="alert">{params.error}</div> : null}
       <div className="card">
         <form action={createTestAction}>
+          <input type="hidden" name="unit" value={selectedUnit} />
           <div className="grid grid-2">
             <label>
               כותרת מבחן
               <input name="title" defaultValue="מבחן חדש" required />
+            </label>
+            <label>
+              יחידה
+              <input value={QUESTION_UNIT_LABELS[selectedUnit]} disabled />
             </label>
             <label>
               כמות שאלות
@@ -104,7 +121,7 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
           </div>
 
           <div className="stack">
-            <strong>בחירה ידנית של שאלות מהמאגָר</strong>
+            <strong>בחירה ידנית של שאלות מהמאגָר עבור {QUESTION_UNIT_LABELS[selectedUnit]}</strong>
             <div className="question-picker-list">
               {activeQuestions.map((question) => (
                 <label className="question-picker-card" key={question.id}>
@@ -121,6 +138,9 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
                 </label>
               ))}
             </div>
+            {activeQuestions.length === 0 ? (
+              <div className="muted">עדיין אין שאלות פעילות משויכות ליחידה הזאת.</div>
+            ) : null}
           </div>
 
           <p className="muted">

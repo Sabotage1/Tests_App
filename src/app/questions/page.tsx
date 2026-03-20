@@ -3,10 +3,11 @@ import Link from "next/link";
 import { archiveQuestionAction, deleteQuestionAction, saveQuestionAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
+import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
 import { getQuestionById, getQuestions, getStages, getSubjects } from "@/lib/repository";
 
 type QuestionsPageProps = {
-  searchParams: Promise<{ edit?: string }>;
+  searchParams: Promise<{ edit?: string; unit?: string }>;
 };
 
 export default async function QuestionsPage({ searchParams }: QuestionsPageProps) {
@@ -18,14 +19,26 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
     getStages(),
     params.edit ? getQuestionById(params.edit) : Promise.resolve(null),
   ]);
+  const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
+  const displayedQuestions = questions.filter((question) => question.unit === selectedUnit);
+  const editFormUnit = editingQuestion?.unit ?? selectedUnit;
 
   return (
     <div className="stack">
       <div className="page-header">
         <div>
           <h2>מאגר שאלות ותשובות</h2>
-          <p>לכל שאלה אפשר לשייך כמה נושאים וכמה שלבים, ולשנות אותם בהמשך.</p>
+          <p>לכל שאלה אפשר לשייך יחידה, נושאים ושלבים, ולייצר מבחנים נפרדים ל־VFR ול־IFR.</p>
         </div>
+      </div>
+
+      <div className="button-row">
+        <Link className={selectedUnit === "vfr" ? "button" : "button button-secondary"} href="/questions?unit=vfr">
+          {QUESTION_UNIT_LABELS.vfr}
+        </Link>
+        <Link className={selectedUnit === "ifr" ? "button" : "button button-secondary"} href="/questions?unit=ifr">
+          {QUESTION_UNIT_LABELS.ifr}
+        </Link>
       </div>
 
       <div className="grid grid-2">
@@ -33,6 +46,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           <h3>{editingQuestion ? "עריכת שאלה" : "הוספת שאלה חדשה"}</h3>
           <form action={saveQuestionAction} key={editingQuestion?.id ?? "new-question"}>
             <input name="id" type="hidden" defaultValue={editingQuestion?.id} />
+            <input name="unitFilter" type="hidden" value={selectedUnit} />
             <label>
               נוסח השאלה
               <textarea name="text" required defaultValue={editingQuestion?.text} />
@@ -50,6 +64,13 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                 >
                   <option value="open">פתוחה</option>
                   <option value="multiple_choice">רב ברירה</option>
+                </select>
+              </label>
+              <label>
+                יחידה
+                <select name="unit" defaultValue={editFormUnit}>
+                  <option value="vfr">{QUESTION_UNIT_LABELS.vfr}</option>
+                  <option value="ifr">{QUESTION_UNIT_LABELS.ifr}</option>
                 </select>
               </label>
               <label>
@@ -100,19 +121,20 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
         </div>
 
         <div className="card">
-          <h3>שאלות קיימות</h3>
+          <h3>שאלות קיימות ביחידה {QUESTION_UNIT_LABELS[selectedUnit]}</h3>
           <div className="stack">
-            {questions.map((question) => (
+            {displayedQuestions.map((question) => (
               <div className="question-block" key={question.id}>
                 <div className="page-header">
                   <div>
                     <h3>{question.sourceReference || "שאלה"}</h3>
                     <p>{question.source}</p>
+                    <p className="muted">{QUESTION_UNIT_LABELS[question.unit]}</p>
                   </div>
                   <div className="button-row">
                     <Link
                       className="button button-secondary"
-                      href={`/questions?edit=${question.id}#question-editor`}
+                      href={`/questions?unit=${selectedUnit}&edit=${question.id}#question-editor`}
                       scroll
                     >
                       עריכה
@@ -121,12 +143,14 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                       <>
                         <form action={archiveQuestionAction}>
                           <input name="id" type="hidden" value={question.id} />
+                          <input name="unitFilter" type="hidden" value={selectedUnit} />
                           <SubmitButton className="button button-danger" pendingLabel="מארכב שאלה...">
                             ארכוב
                           </SubmitButton>
                         </form>
                         <form action={deleteQuestionAction}>
                           <input name="id" type="hidden" value={question.id} />
+                          <input name="unitFilter" type="hidden" value={selectedUnit} />
                           <SubmitButton className="button button-danger" pendingLabel="מוחק שאלה...">
                             מחיקה
                           </SubmitButton>
@@ -152,6 +176,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                 </div>
               </div>
             ))}
+            {displayedQuestions.length === 0 ? <div className="muted">עדיין אין שאלות משויכות ליחידה הזאת.</div> : null}
           </div>
         </div>
       </div>

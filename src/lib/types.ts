@@ -1,4 +1,4 @@
-import type { TestStatus, UserRole } from "@/lib/constants";
+import type { QuestionUnit, TestStatus, UserRole } from "@/lib/constants";
 
 export type User = {
   id: string;
@@ -19,6 +19,7 @@ export type QuestionRow = {
   text: string;
   answer: string;
   questionType: string;
+  unit: QuestionUnit;
   source: string;
   sourceReference: string | null;
   subjectIds: string[];
@@ -34,6 +35,7 @@ export type TestListItem = {
   title: string;
   status: TestStatus;
   selectionMode: string;
+  unit: QuestionUnit;
   createdAt: string;
   updatedAt: string;
   sentAt: string | null;
@@ -64,6 +66,7 @@ export type TestDetails = {
   title: string;
   status: TestStatus;
   selectionMode: string;
+  unit: QuestionUnit;
   questionCount: number;
   durationMinutes: number;
   shareToken: string | null;

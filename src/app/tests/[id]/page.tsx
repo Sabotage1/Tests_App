@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { QUESTION_UNIT_LABELS } from "@/lib/constants";
 import {
   createShareLinkAction,
   sendGradeEmailAction,
@@ -114,6 +115,7 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
       <div className="grid grid-2">
         <div className="card">
           <h3>פרטי מבחן</h3>
+          <p>יחידה: {QUESTION_UNIT_LABELS[test.unit]}</p>
           <p>שיטת בחירה: {SELECTION_MODE_LABELS[test.selectionMode] ?? "שיטת בחירה מותאמת"}</p>
           <p>משך: {test.durationMinutes === 0 ? "ללא הגבלת זמן" : `${test.durationMinutes} דקות`}</p>
           <p>נוצר: {new Date(test.createdAt).toLocaleString("he-IL")}</p>

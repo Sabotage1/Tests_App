@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
+import { QUESTION_UNIT_LABELS } from "@/lib/constants";
 import { getTests } from "@/lib/repository";
 
 type GradedTestsPageProps = {
@@ -141,6 +142,7 @@ export default async function GradedTestsPage({ searchParams }: GradedTestsPageP
               <tr key={test.id}>
                 <td>
                   <strong>{test.title}</strong>
+                  <div className="muted">{QUESTION_UNIT_LABELS[test.unit]}</div>
                   <div className="muted">יוצר: {test.creatorName}</div>
                 </td>
                 <td>{test.studentName || test.studentEmail || "-"}</td>

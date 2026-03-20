@@ -42,5 +42,16 @@ export const USER_ROLES = [
   "viewer",
 ] as const;
 
+export const QUESTION_UNITS = [
+  "vfr",
+  "ifr",
+] as const;
+
+export const QUESTION_UNIT_LABELS = {
+  vfr: 'יחידת סוכה VFR',
+  ifr: 'יחידת מכ"ם IFR',
+} as const;
+
 export type TestStatus = (typeof TEST_STATUSES)[number];
 export type UserRole = (typeof USER_ROLES)[number];
+export type QuestionUnit = (typeof QUESTION_UNITS)[number];

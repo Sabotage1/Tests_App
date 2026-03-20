@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { requireUser } from "@/lib/auth";
+import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
 import { getTests } from "@/lib/repository";
 
 function getSolvedMinutes(startedAt: string | null, submittedAt: string | null) {
@@ -16,10 +17,16 @@ function getSolvedMinutes(startedAt: string | null, submittedAt: string | null) 
   return Math.ceil(difference / 60000);
 }
 
-export default async function ReviewTestsPage() {
+type ReviewTestsPageProps = {
+  searchParams: Promise<{ unit?: string }>;
+};
+
+export default async function ReviewTestsPage({ searchParams }: ReviewTestsPageProps) {
   await requireUser();
+  const params = await searchParams;
   const tests = await getTests();
-  const pendingTests = tests.filter((test) => test.status === "completed");
+  const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
+  const pendingTests = tests.filter((test) => test.status === "completed" && test.unit === selectedUnit);
 
   return (
     <div className="stack">
@@ -28,6 +35,14 @@ export default async function ReviewTestsPage() {
           <h2>בדיקת מבחנים</h2>
           <p>רשימת מבחנים שהוגשו ומחכים לבדיקה.</p>
         </div>
+      </div>
+      <div className="button-row">
+        <Link className={selectedUnit === "vfr" ? "button" : "button button-secondary"} href="/tests/review?unit=vfr">
+          {QUESTION_UNIT_LABELS.vfr}
+        </Link>
+        <Link className={selectedUnit === "ifr" ? "button" : "button button-secondary"} href="/tests/review?unit=ifr">
+          {QUESTION_UNIT_LABELS.ifr}
+        </Link>
       </div>
 
       <div className="card">
@@ -48,7 +63,10 @@ export default async function ReviewTestsPage() {
 
               return (
                 <tr key={test.id}>
-                  <td>{test.title}</td>
+                  <td>
+                    <strong>{test.title}</strong>
+                    <div className="muted">{QUESTION_UNIT_LABELS[test.unit]}</div>
+                  </td>
                   <td>{test.studentName || test.studentEmail || "-"}</td>
                   <td>{test.submittedAt ? new Date(test.submittedAt).toLocaleString("he-IL") : "-"}</td>
                   <td>{solvedMinutes !== null ? `${solvedMinutes} דקות` : "-"}</td>
@@ -63,7 +81,7 @@ export default async function ReviewTestsPage() {
             })}
             {pendingTests.length === 0 ? (
               <tr>
-                <td colSpan={6}>אין כרגע מבחנים שממתינים לבדיקה.</td>
+                <td colSpan={6}>אין כרגע מבחנים שממתינים לבדיקה ביחידה שבחרת.</td>
               </tr>
             ) : null}
           </tbody>

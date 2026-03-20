@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { clearSession, createSession, requireAdmin, requireEditor, requireUser } from "@/lib/auth";
 import { gradeTestWithAi } from "@/lib/ai-grading";
+import type { QuestionUnit } from "@/lib/constants";
 import {
   archiveQuestion,
   authenticateUser,
@@ -38,6 +39,11 @@ function getMany(formData: FormData, name: string) {
     .filter(Boolean);
 }
 
+function getUnitRedirectSuffix(formData: FormData) {
+  const unit = formData.get("unitFilter")?.toString();
+  return unit === "ifr" ? "?unit=ifr" : "?unit=vfr";
+}
+
 type RedirectPath = Parameters<typeof redirect>[0];
 
 export async function loginAction(formData: FormData) {
@@ -62,11 +68,13 @@ export async function saveQuestionAction(formData: FormData) {
   await requireEditor();
 
   const id = formData.get("id")?.toString() || null;
+  const redirectSuffix = getUnitRedirectSuffix(formData);
   await upsertQuestion({
     id,
     text: formData.get("text")?.toString() ?? "",
     answer: formData.get("answer")?.toString() ?? "",
     questionType: formData.get("questionType")?.toString() ?? "open",
+    unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
     source: formData.get("source")?.toString() ?? "הוזן ידנית",
     sourceReference: formData.get("sourceReference")?.toString() ?? null,
     subjectIds: getMany(formData, "subjectIds"),
@@ -74,31 +82,33 @@ export async function saveQuestionAction(formData: FormData) {
   });
 
   revalidatePath("/questions");
-  redirect("/questions");
+  redirect(`/questions${redirectSuffix}`);
 }
 
 export async function archiveQuestionAction(formData: FormData) {
   await requireAdmin();
+  const redirectSuffix = getUnitRedirectSuffix(formData);
   const id = formData.get("id")?.toString();
   if (!id) {
-    redirect("/questions");
+    redirect(`/questions${redirectSuffix}`);
   }
 
   await archiveQuestion(id);
   revalidatePath("/questions");
-  redirect("/questions");
+  redirect(`/questions${redirectSuffix}`);
 }
 
 export async function deleteQuestionAction(formData: FormData) {
   await requireAdmin();
+  const redirectSuffix = getUnitRedirectSuffix(formData);
   const id = formData.get("id")?.toString();
   if (!id) {
-    redirect("/questions");
+    redirect(`/questions${redirectSuffix}`);
   }
 
   await deleteQuestion(id);
   revalidatePath("/questions");
-  redirect("/questions");
+  redirect(`/questions${redirectSuffix}`);
 }
 
 export async function saveLookupAction(formData: FormData) {
@@ -251,6 +261,7 @@ export async function saveDefaultDurationAction(formData: FormData) {
 export async function createTestAction(formData: FormData) {
   const user = await requireEditor();
   const rawDuration = formData.get("durationMinutes")?.toString().trim() ?? "";
+  const selectedUnit = formData.get("unit")?.toString() === "ifr" ? "ifr" : "vfr";
   let id = "";
 
   try {
@@ -258,6 +269,7 @@ export async function createTestAction(formData: FormData) {
       title: formData.get("title")?.toString() ?? "",
       createdBy: user.id,
       selectionMode: (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered" | "manual",
+      unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
       questionCount: Number(formData.get("questionCount")?.toString() ?? "0"),
       durationMinutes: rawDuration === "" ? undefined : Number(rawDuration),
       sentAt: formData.get("sentAt")?.toString() ?? "",
@@ -270,7 +282,7 @@ export async function createTestAction(formData: FormData) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "יצירת המבחן נכשלה";
-    redirect(`/tests/new?error=${encodeURIComponent(message)}`);
+    redirect(`/tests/new?unit=${selectedUnit}&error=${encodeURIComponent(message)}`);
   }
 
   revalidatePath("/dashboard");

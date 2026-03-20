@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import type { PoolClient, QueryResultRow } from "pg";
 
-import { APP_NAME, DEFAULT_DURATION_MINUTES, MISSING_ANSWER_TEXT } from "@/lib/constants";
+import { APP_NAME, DEFAULT_DURATION_MINUTES, MISSING_ANSWER_TEXT, type QuestionUnit } from "@/lib/constants";
 import { query, withTransaction } from "@/lib/db";
 import type { DashboardStats, Option, QuestionRow, TestDetails, TestListItem, User } from "@/lib/types";
 
@@ -383,6 +383,7 @@ export async function getQuestionById(id: string) {
         q.text,
         q.answer,
         q.question_type AS "questionType",
+        q.unit,
         q.source,
         q.source_reference AS "sourceReference",
         q.is_active::int AS "isActive",
@@ -412,6 +413,7 @@ export async function getQuestions() {
       q.text,
       q.answer,
       q.question_type AS "questionType",
+      q.unit,
       q.source,
       q.source_reference AS "sourceReference",
       q.is_active::int AS "isActive",
@@ -441,6 +443,7 @@ export async function upsertQuestion(input: {
   text: string;
   answer: string;
   questionType: string;
+  unit: QuestionUnit;
   source: string;
   sourceReference?: string | null;
   subjectIds: string[];
@@ -456,15 +459,17 @@ export async function upsertQuestion(input: {
           SET text = $1,
               answer = $2,
               question_type = $3,
-              source = $4,
-              source_reference = $5,
+              unit = $4,
+              source = $5,
+              source_reference = $6,
               updated_at = NOW()
-          WHERE id = $6
+          WHERE id = $7
         `,
         [
           input.text.trim(),
           input.answer.trim() || MISSING_ANSWER_TEXT,
           input.questionType,
+          input.unit,
           input.source.trim(),
           input.sourceReference?.trim() || null,
           questionId,
@@ -474,15 +479,16 @@ export async function upsertQuestion(input: {
       await client.query(
         `
           INSERT INTO questions (
-            id, text, answer, question_type, source, source_reference, is_active, created_at, updated_at
+            id, text, answer, question_type, unit, source, source_reference, is_active, created_at, updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, TRUE, NOW(), NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, NOW(), NOW())
         `,
         [
           questionId,
           input.text.trim(),
           input.answer.trim() || MISSING_ANSWER_TEXT,
           input.questionType,
+          input.unit,
           input.source.trim(),
           input.sourceReference?.trim() || null,
         ],
@@ -539,6 +545,7 @@ export async function getTests() {
     title: string;
     status: TestListItem["status"];
     selection_mode: string;
+    unit: QuestionUnit;
     created_at: string;
     updated_at: string;
     sent_at: string | null;
@@ -556,6 +563,7 @@ export async function getTests() {
       t.title,
       t.status,
       t.selection_mode,
+      t.unit,
       t.created_at::text,
       t.updated_at::text,
       t.sent_at::text,
@@ -577,6 +585,7 @@ export async function getTests() {
     title: row.title,
     status: row.status,
     selectionMode: row.selection_mode,
+    unit: row.unit,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     sentAt: row.sent_at,
@@ -595,6 +604,7 @@ export async function createTest(input: {
   title: string;
   createdBy: string;
   selectionMode: "random" | "filtered" | "manual";
+  unit: QuestionUnit;
   questionCount: number;
   durationMinutes?: number;
   sentAt?: string;
@@ -613,6 +623,7 @@ export async function createTest(input: {
     id: string;
     text: string;
     answer: string;
+    unit: QuestionUnit;
     subject_ids: string[] | null;
     stage_ids: string[] | null;
     subject_names: string[] | null;
@@ -623,6 +634,7 @@ export async function createTest(input: {
         q.id,
         q.text,
         q.answer,
+        q.unit,
         COALESCE(array_remove(array_agg(DISTINCT s.id), NULL), ARRAY[]::TEXT[]) AS subject_ids,
         COALESCE(array_remove(array_agg(DISTINCT st.id), NULL), ARRAY[]::TEXT[]) AS stage_ids,
         COALESCE(array_remove(array_agg(DISTINCT s.name), NULL), ARRAY[]::TEXT[]) AS subject_names,
@@ -633,8 +645,10 @@ export async function createTest(input: {
       LEFT JOIN question_stages qst ON qst.question_id = q.id
       LEFT JOIN stages st ON st.id = qst.stage_id
       WHERE q.is_active = TRUE
+        AND q.unit = $1
       GROUP BY q.id
     `,
+    [input.unit],
   );
 
   let pool = result.rows;
@@ -696,16 +710,17 @@ export async function createTest(input: {
     await client.query(
       `
         INSERT INTO tests (
-          id, title, created_by, status, selection_mode, question_count, duration_minutes,
+          id, title, created_by, status, selection_mode, unit, question_count, duration_minutes,
           student_name, student_email, sent_at, created_at, updated_at
         )
-        VALUES ($1, $2, $3, 'generated', $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        VALUES ($1, $2, $3, 'generated', $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
       `,
       [
         testId,
         input.title.trim(),
         input.createdBy,
         input.selectionMode,
+        input.unit,
         selected.length,
         durationMinutes,
         input.studentName?.trim() || null,
@@ -759,16 +774,17 @@ export async function cloneTestForNewStudent(input: {
     await client.query(
       `
         INSERT INTO tests (
-          id, title, created_by, status, selection_mode, question_count, duration_minutes,
+          id, title, created_by, status, selection_mode, unit, question_count, duration_minutes,
           student_name, student_email, sent_at, created_at, updated_at
         )
-        VALUES ($1, $2, $3, 'generated', $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        VALUES ($1, $2, $3, 'generated', $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
       `,
       [
         newTestId,
         sourceTest.title,
         input.createdBy,
         "archived_copy",
+        sourceTest.unit,
         sourceTest.questionCount,
         sourceTest.durationMinutes,
         input.studentName?.trim() || null,
@@ -827,6 +843,7 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string) {
     title: string;
     status: TestDetails["status"];
     selection_mode: string;
+    unit: QuestionUnit;
     question_count: number;
     duration_minutes: number;
     share_token: string | null;
@@ -849,6 +866,7 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string) {
         t.title,
         t.status,
         t.selection_mode,
+        t.unit,
         t.question_count,
         t.duration_minutes,
         t.share_token,
@@ -910,6 +928,7 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string) {
     title: test.title,
     status: test.status,
     selectionMode: test.selection_mode,
+    unit: test.unit,
     questionCount: test.question_count,
     durationMinutes: test.duration_minutes,
     shareToken: test.share_token,

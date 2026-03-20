@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { requireUser } from "@/lib/auth";
-import type { TestStatus } from "@/lib/constants";
+import { QUESTION_UNIT_LABELS, type TestStatus } from "@/lib/constants";
 import { getTests } from "@/lib/repository";
 
 type ArchivePageProps = {
@@ -59,6 +59,7 @@ export default async function ArchiveTestsPage({ searchParams }: ArchivePageProp
                 <tr key={test.id}>
                   <td>
                     <strong>{test.title}</strong>
+                    <div className="muted">{QUESTION_UNIT_LABELS[test.unit]}</div>
                     <div className="muted">שאלות: {test.questionCount}</div>
                   </td>
                   <td>{test.studentName || "-"}</td>

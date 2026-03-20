@@ -111,6 +111,7 @@ async function createSchema(client: PoolClient) {
       text TEXT NOT NULL,
       answer TEXT NOT NULL,
       question_type TEXT NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'vfr',
       source TEXT NOT NULL,
       source_reference TEXT,
       is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -136,6 +137,7 @@ async function createSchema(client: PoolClient) {
       created_by TEXT NOT NULL REFERENCES users(id),
       status TEXT NOT NULL,
       selection_mode TEXT NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'vfr',
       question_count INTEGER NOT NULL,
       duration_minutes INTEGER NOT NULL,
       share_token TEXT UNIQUE,
@@ -173,7 +175,19 @@ async function createSchema(client: PoolClient) {
     );
 
     ALTER TABLE tests ADD COLUMN IF NOT EXISTS graded_by_name TEXT;
+    ALTER TABLE questions ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
+    ALTER TABLE tests ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS review_notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+  `);
+
+  await client.query(`
+    UPDATE questions
+    SET unit = 'vfr'
+    WHERE unit IS NULL OR unit = '';
+
+    UPDATE tests
+    SET unit = 'vfr'
+    WHERE unit IS NULL OR unit = '';
   `);
 }
 

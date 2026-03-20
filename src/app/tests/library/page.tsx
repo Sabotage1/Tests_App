@@ -3,11 +3,11 @@ import Link from "next/link";
 import { resendArchivedTestAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
-import type { TestStatus } from "@/lib/constants";
+import { QUESTION_UNIT_LABELS, type QuestionUnit, type TestStatus } from "@/lib/constants";
 import { getTests } from "@/lib/repository";
 
 type TestLibraryPageProps = {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; unit?: string }>;
 };
 
 const STATUS_LABELS: Record<TestStatus, string> = {
@@ -29,7 +29,8 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
   await requireUser();
   const params = await searchParams;
   const tests = await getTests();
-  const reusableTests = tests.filter((test) => test.selectionMode !== "archived_copy");
+  const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
+  const reusableTests = tests.filter((test) => test.selectionMode !== "archived_copy" && test.unit === selectedUnit);
 
   return (
     <div className="stack">
@@ -38,6 +39,14 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
           <h2>מאגר מבחנים</h2>
           <p>כל מבחן שנוצר נשמר כאן לשימוש עתידי, כולל אפשרות לשכפול ושליחה לנבחנים חדשים.</p>
         </div>
+      </div>
+      <div className="button-row">
+        <Link className={selectedUnit === "vfr" ? "button" : "button button-secondary"} href="/tests/library?unit=vfr">
+          {QUESTION_UNIT_LABELS.vfr}
+        </Link>
+        <Link className={selectedUnit === "ifr" ? "button" : "button button-secondary"} href="/tests/library?unit=ifr">
+          {QUESTION_UNIT_LABELS.ifr}
+        </Link>
       </div>
       {params.error ? <div className="alert">{params.error}</div> : null}
 
@@ -59,6 +68,7 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
               <tr key={test.id}>
                 <td>
                   <strong>{test.title}</strong>
+                  <div className="muted">{QUESTION_UNIT_LABELS[test.unit]}</div>
                   <div className="muted">שאלות: {test.questionCount}</div>
                 </td>
                 <td>{test.creatorName}</td>
