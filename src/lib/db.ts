@@ -19,6 +19,7 @@ declare global {
 
 const connectionString =
   process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:55432/atc_tests";
+const QUESTION_SEED_COMPLETED_KEY = "question_seed_completed";
 
 function getInitialUsers() {
   if (process.env.NODE_ENV !== "production") {
@@ -220,9 +221,29 @@ async function seedLookupTable(client: PoolClient, table: "subjects" | "stages",
   }
 }
 
+async function upsertAppSetting(client: PoolClient, key: string, value: string) {
+  await client.query(
+    `
+      INSERT INTO app_settings (key, value, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `,
+    [key, value],
+  );
+}
+
 async function seedQuestions(client: PoolClient) {
+  const seedStatus = await client.query<{ value: string }>("SELECT value FROM app_settings WHERE key = $1", [
+    QUESTION_SEED_COMPLETED_KEY,
+  ]);
+  if (seedStatus.rows[0]?.value === "true") {
+    return;
+  }
+
   const result = await client.query<{ count: string }>("SELECT COUNT(*)::text AS count FROM questions");
   if (Number(result.rows[0]?.count ?? 0) > 0) {
+    await upsertAppSetting(client, QUESTION_SEED_COMPLETED_KEY, "true");
     return;
   }
 
@@ -273,6 +294,8 @@ async function seedQuestions(client: PoolClient) {
       }
     }
   }
+
+  await upsertAppSetting(client, QUESTION_SEED_COMPLETED_KEY, "true");
 }
 
 async function seedSettings(client: PoolClient) {
