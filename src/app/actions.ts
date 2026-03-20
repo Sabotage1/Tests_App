@@ -257,13 +257,14 @@ export async function createTestAction(formData: FormData) {
     id = await createTest({
       title: formData.get("title")?.toString() ?? "",
       createdBy: user.id,
-      selectionMode: (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered",
+      selectionMode: (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered" | "manual",
       questionCount: Number(formData.get("questionCount")?.toString() ?? "0"),
       durationMinutes: rawDuration === "" ? undefined : Number(rawDuration),
       sentAt: formData.get("sentAt")?.toString() ?? "",
       onlyAnswered: formData.get("onlyAnswered")?.toString() === "on",
       subjectIds: getMany(formData, "subjectIds"),
       stageIds: getMany(formData, "stageIds"),
+      questionIds: getMany(formData, "questionIds"),
       studentName: formData.get("studentName")?.toString() ?? "",
       studentEmail: formData.get("studentEmail")?.toString() ?? "",
     });

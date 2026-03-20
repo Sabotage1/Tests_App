@@ -354,6 +354,34 @@ textarea {
   background: #fbfdff;
 }
 
+.question-picker-list {
+  display: grid;
+  gap: 12px;
+  max-height: 520px;
+  overflow: auto;
+  padding-inline-end: 6px;
+}
+
+.question-picker-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fbfdff;
+}
+
+.question-picker-card input {
+  width: auto;
+  margin-top: 3px;
+}
+
+.question-picker-meta {
+  margin-top: 4px;
+}
+
 .split {
   display: grid;
   grid-template-columns: 1fr 1fr;

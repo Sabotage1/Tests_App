@@ -1,7 +1,7 @@
 import { createTestAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
-import { getDefaultTestDurationMinutes, getStages, getSubjects } from "@/lib/repository";
+import { getDefaultTestDurationMinutes, getQuestions, getStages, getSubjects } from "@/lib/repository";
 
 type NewTestPageProps = {
   searchParams: Promise<{ error?: string }>;
@@ -10,18 +10,20 @@ type NewTestPageProps = {
 export default async function NewTestPage({ searchParams }: NewTestPageProps) {
   await requireUser();
   const params = await searchParams;
-  const [subjects, stages, defaultDurationMinutes] = await Promise.all([
+  const [subjects, stages, defaultDurationMinutes, questions] = await Promise.all([
     getSubjects(),
     getStages(),
     getDefaultTestDurationMinutes(),
+    getQuestions(),
   ]);
+  const activeQuestions = questions.filter((question) => question.isActive === 1);
 
   return (
     <div className="stack">
       <div className="page-header">
         <div>
           <h2>יצירת מבחן חדש</h2>
-          <p>בחר כמות שאלות, סינון לפי נושאים ושלבים, או יצירה אקראית מכל המאגר.</p>
+          <p>בחר כמות שאלות, סינון לפי נושאים ושלבים, או בחירה ידנית ישירה ממאגר השאלות.</p>
         </div>
       </div>
       {params.error ? <div className="alert">{params.error}</div> : null}
@@ -50,6 +52,7 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
               <select name="selectionMode" defaultValue="random">
                 <option value="random">אקראי מכל המאגר</option>
                 <option value="filtered">אקראי רק לפי הנושאים והשלבים שנבחרו</option>
+                <option value="manual">בחירה ידנית מהמאגר</option>
               </select>
             </label>
             <label>
@@ -71,6 +74,9 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
               <input type="checkbox" name="onlyAnswered" />
               בחר רק שאלות עם תשובה צפויה קיימת
             </label>
+            <p className="muted">
+              בבחירה ידנית, המבחן יורכב בדיוק מהשאלות שיסומנו כאן למטה, וכמות השאלות תיקבע לפי מספר הסימונים.
+            </p>
           </div>
 
           <div className="stack">
@@ -96,6 +102,27 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
               ))}
             </div>
           </div>
+
+          <div className="stack">
+            <strong>בחירה ידנית של שאלות מהמאגָר</strong>
+            <div className="question-picker-list">
+              {activeQuestions.map((question) => (
+                <label className="question-picker-card" key={question.id}>
+                  <input type="checkbox" name="questionIds" value={question.id} />
+                  <div className="stack" style={{ gap: 8 }}>
+                    <div>
+                      <strong>{question.sourceReference || "ללא סימוכין"}</strong>
+                      <p className="muted question-picker-meta">
+                        {question.source} | {question.questionType === "multiple_choice" ? "רב ברירה" : "פתוחה"}
+                      </p>
+                    </div>
+                    <p style={{ whiteSpace: "pre-wrap" }}>{question.text}</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <p className="muted">
             אם לא יוזן זמן, יילקח ערך ברירת המחדל מהמערכת. אם יוזן 0, למבחן לא תהיה מגבלת זמן.
           </p>

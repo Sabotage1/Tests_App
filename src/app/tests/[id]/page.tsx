@@ -34,6 +34,7 @@ const STATUS_LABELS = {
 const SELECTION_MODE_LABELS: Record<string, string> = {
   random: "בחירה אקראית מכל המאגר",
   filtered: "בחירה אקראית לפי סינון",
+  manual: "בחירה ידנית מהמאגר",
   archived_copy: "עותק שנשלח מחדש מהמאגר",
 };
 

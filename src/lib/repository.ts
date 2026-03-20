@@ -594,13 +594,14 @@ export async function getTests() {
 export async function createTest(input: {
   title: string;
   createdBy: string;
-  selectionMode: "random" | "filtered";
+  selectionMode: "random" | "filtered" | "manual";
   questionCount: number;
   durationMinutes?: number;
   sentAt?: string;
   onlyAnswered?: boolean;
   subjectIds: string[];
   stageIds: string[];
+  questionIds: string[];
   studentName?: string;
   studentEmail?: string;
 }) {
@@ -638,31 +639,55 @@ export async function createTest(input: {
 
   let pool = result.rows;
 
-  if (input.onlyAnswered) {
-    pool = pool.filter((row) => {
-      const answer = row.answer.trim();
-      return answer !== "" && answer !== MISSING_ANSWER_TEXT;
-    });
-  }
+  const hasExpectedAnswer = (row: { answer: string }) => {
+    const answer = row.answer.trim();
+    return answer !== "" && answer !== MISSING_ANSWER_TEXT;
+  };
 
-  if (input.selectionMode === "filtered") {
-    pool = pool.filter((row) => {
-      const subjectMatch =
-        input.subjectIds.length === 0 ||
-        input.subjectIds.some((subjectId) => formatArray(row.subject_ids).includes(subjectId));
-      const stageMatch =
-        input.stageIds.length === 0 ||
-        input.stageIds.some((stageId) => formatArray(row.stage_ids).includes(stageId));
+  let selected = pool.slice(0, 0);
 
-      return subjectMatch && stageMatch;
-    });
-  }
+  if (input.selectionMode === "manual") {
+    const selectedIds = Array.from(new Set(input.questionIds));
+    if (selectedIds.length === 0) {
+      throw new Error("בבחירה ידנית יש לסמן לפחות שאלה אחת מהמאגָר.");
+    }
 
-  const shuffled = [...pool].sort(() => Math.random() - 0.5);
-  const selected = shuffled.slice(0, input.questionCount);
+    const rowsById = new Map(pool.map((row) => [row.id, row]));
+    selected = selectedIds
+      .map((questionId) => rowsById.get(questionId))
+      .filter((row): row is (typeof pool)[number] => Boolean(row));
 
-  if (selected.length < input.questionCount) {
-    throw new Error("אין מספיק שאלות פעילות לבניית המבחן לפי הסינון שבחרת.");
+    if (selected.length !== selectedIds.length) {
+      throw new Error("חלק מהשאלות שסומנו אינן פעילות יותר. יש לרענן את המסך ולנסות שוב.");
+    }
+
+    if (input.onlyAnswered && selected.some((row) => !hasExpectedAnswer(row))) {
+      throw new Error("בבחירה של שאלות עם תשובה צפויה בלבד, אי אפשר לבחור שאלות שחסרה להן תשובה.");
+    }
+  } else {
+    if (input.onlyAnswered) {
+      pool = pool.filter(hasExpectedAnswer);
+    }
+
+    if (input.selectionMode === "filtered") {
+      pool = pool.filter((row) => {
+        const subjectMatch =
+          input.subjectIds.length === 0 ||
+          input.subjectIds.some((subjectId) => formatArray(row.subject_ids).includes(subjectId));
+        const stageMatch =
+          input.stageIds.length === 0 ||
+          input.stageIds.some((stageId) => formatArray(row.stage_ids).includes(stageId));
+
+        return subjectMatch && stageMatch;
+      });
+    }
+
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    selected = shuffled.slice(0, input.questionCount);
+
+    if (selected.length < input.questionCount) {
+      throw new Error("אין מספיק שאלות פעילות לבניית המבחן לפי הסינון שבחרת.");
+    }
   }
 
   const testId = nanoid();
