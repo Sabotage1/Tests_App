@@ -29,7 +29,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       </div>
 
       <div className="grid grid-2">
-        <div className="card">
+        <div className="card" id="question-editor">
           <h3>{editingQuestion ? "עריכת שאלה" : "הוספת שאלה חדשה"}</h3>
           <form action={saveQuestionAction} key={editingQuestion?.id ?? "new-question"}>
             <input name="id" type="hidden" defaultValue={editingQuestion?.id} />
@@ -110,7 +110,11 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                     <p>{question.source}</p>
                   </div>
                   <div className="button-row">
-                    <Link className="button button-secondary" href={`/questions?edit=${question.id}`}>
+                    <Link
+                      className="button button-secondary"
+                      href={`/questions?edit=${question.id}#question-editor`}
+                      scroll
+                    >
                       עריכה
                     </Link>
                     {user.role === "admin" ? (
