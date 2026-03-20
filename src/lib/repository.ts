@@ -426,7 +426,11 @@ export async function getQuestions() {
     LEFT JOIN question_stages qst ON qst.question_id = q.id
     LEFT JOIN stages st ON st.id = qst.stage_id
     GROUP BY q.id
-    ORDER BY q.updated_at DESC
+    ORDER BY
+      q.source ASC,
+      NULLIF(regexp_replace(COALESCE(q.source_reference, ''), '\\D', '', 'g'), '')::INTEGER NULLS LAST,
+      q.source_reference ASC NULLS LAST,
+      q.created_at ASC
   `);
 
   return result.rows;
