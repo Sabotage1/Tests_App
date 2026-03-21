@@ -41,10 +41,16 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
         </div>
       </div>
       <div className="button-row">
-        <Link className={selectedUnit === "vfr" ? "button" : "button button-secondary"} href="/tests/library?unit=vfr">
+        <Link
+          className={selectedUnit === "vfr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
+          href="/tests/library?unit=vfr"
+        >
           {QUESTION_UNIT_LABELS.vfr}
         </Link>
-        <Link className={selectedUnit === "ifr" ? "button" : "button button-secondary"} href="/tests/library?unit=ifr">
+        <Link
+          className={selectedUnit === "ifr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
+          href="/tests/library?unit=ifr"
+        >
           {QUESTION_UNIT_LABELS.ifr}
         </Link>
       </div>

@@ -243,6 +243,22 @@ a {
   color: var(--success);
 }
 
+.unit-toggle-active {
+  background: linear-gradient(135deg, #0e7cb8, #27a6df);
+  color: #ffffff;
+  box-shadow:
+    0 12px 24px rgba(14, 124, 184, 0.2),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  font-weight: 800;
+}
+
+.unit-toggle-idle {
+  background: #e6f0f9;
+  color: #114160;
+  box-shadow: inset 0 0 0 1px rgba(17, 65, 96, 0.14);
+  font-weight: 700;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;

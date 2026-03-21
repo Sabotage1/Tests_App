@@ -37,10 +37,16 @@ export default async function ReviewTestsPage({ searchParams }: ReviewTestsPageP
         </div>
       </div>
       <div className="button-row">
-        <Link className={selectedUnit === "vfr" ? "button" : "button button-secondary"} href="/tests/review?unit=vfr">
+        <Link
+          className={selectedUnit === "vfr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
+          href="/tests/review?unit=vfr"
+        >
           {QUESTION_UNIT_LABELS.vfr}
         </Link>
-        <Link className={selectedUnit === "ifr" ? "button" : "button button-secondary"} href="/tests/review?unit=ifr">
+        <Link
+          className={selectedUnit === "ifr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
+          href="/tests/review?unit=ifr"
+        >
           {QUESTION_UNIT_LABELS.ifr}
         </Link>
       </div>

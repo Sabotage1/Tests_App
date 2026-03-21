@@ -33,10 +33,16 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       </div>
 
       <div className="button-row">
-        <Link className={selectedUnit === "vfr" ? "button" : "button button-secondary"} href="/questions?unit=vfr">
+        <Link
+          className={selectedUnit === "vfr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
+          href="/questions?unit=vfr"
+        >
           {QUESTION_UNIT_LABELS.vfr}
         </Link>
-        <Link className={selectedUnit === "ifr" ? "button" : "button button-secondary"} href="/questions?unit=ifr">
+        <Link
+          className={selectedUnit === "ifr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
+          href="/questions?unit=ifr"
+        >
           {QUESTION_UNIT_LABELS.ifr}
         </Link>
       </div>

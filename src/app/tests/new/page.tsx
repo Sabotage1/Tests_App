@@ -31,10 +31,16 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
         </div>
       </div>
       <div className="button-row">
-        <Link className={selectedUnit === "vfr" ? "button" : "button button-secondary"} href="/tests/new?unit=vfr">
+        <Link
+          className={selectedUnit === "vfr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
+          href="/tests/new?unit=vfr"
+        >
           {QUESTION_UNIT_LABELS.vfr}
         </Link>
-        <Link className={selectedUnit === "ifr" ? "button" : "button button-secondary"} href="/tests/new?unit=ifr">
+        <Link
+          className={selectedUnit === "ifr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
+          href="/tests/new?unit=ifr"
+        >
           {QUESTION_UNIT_LABELS.ifr}
         </Link>
       </div>
