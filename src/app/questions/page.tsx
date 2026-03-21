@@ -50,7 +50,10 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       <div className="grid grid-2">
         <div className="card" id="question-editor">
           <h3>{editingQuestion ? "עריכת שאלה" : "הוספת שאלה חדשה"}</h3>
-          <form action={saveQuestionAction} key={editingQuestion?.id ?? "new-question"}>
+          <form
+            action={saveQuestionAction}
+            key={editingQuestion?.id ?? `new-question-${selectedUnit}`}
+          >
             <input name="id" type="hidden" defaultValue={editingQuestion?.id} />
             <input name="unitFilter" type="hidden" value={selectedUnit} />
             <label>
