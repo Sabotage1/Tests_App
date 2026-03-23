@@ -1,5 +1,5 @@
 export const APP_NAME = "מערכת ניהול מבחנים - מגדל בן גוריון";
-export const APP_VERSION = "1.2.1";
+export const APP_VERSION = "1.3";
 
 export const SESSION_COOKIE = "atc_session";
 

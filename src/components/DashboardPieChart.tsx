@@ -31,7 +31,7 @@ const CHART_CIRCUMFERENCE = 2 * Math.PI * CHART_RADIUS;
 const SEGMENT_GAP = 8;
 
 export function DashboardPieChart({ stats, metrics, canConfigure = false }: DashboardPieChartProps) {
-  const entries = useMemo<ChartEntry[]>(() => {
+  const allEntries = useMemo<ChartEntry[]>(() => {
     const baseEntries = metrics.map((metric) => ({
       key: metric,
       label: DASHBOARD_CHART_METRIC_LABELS[metric],
@@ -48,6 +48,7 @@ export function DashboardPieChart({ stats, metrics, canConfigure = false }: Dash
     }));
   }, [metrics, stats]);
 
+  const entries = allEntries.filter((entry) => entry.value > 0);
   const total = entries.reduce((sum, entry) => sum + entry.value, 0);
   const [hoveredMetric, setHoveredMetric] = useState<DashboardChartMetric | null>(null);
 
@@ -60,7 +61,10 @@ export function DashboardPieChart({ stats, metrics, canConfigure = false }: Dash
       <div className="page-header">
         <div>
           <h3>תרשים מצב מבחנים</h3>
-          <p>מעבר עכבר מעל חתיכה מציג את הנתון, הכמות והאחוז שלו מתוך המדדים שמוצגים כרגע.</p>
+          <p>
+            מעבר עכבר מעל חתיכה מציג את הנתון, הכמות והאחוז שלו מתוך המדדים שמוצגים כרגע. מדדים שערכם 0 לא מוצגים
+            בתרשים.
+          </p>
         </div>
         {canConfigure ? (
           <Link className="button button-secondary" href="/settings">
@@ -180,6 +184,7 @@ export function DashboardPieChart({ stats, metrics, canConfigure = false }: Dash
               </button>
             );
           })}
+          {entries.length === 0 ? <div className="muted">כרגע אין מדדים עם ערך גדול מאפס להצגה בתרשים.</div> : null}
         </div>
       </div>
     </div>
