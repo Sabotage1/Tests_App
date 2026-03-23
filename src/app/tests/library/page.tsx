@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { resendArchivedTestAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
-import { requireUser } from "@/lib/auth";
+import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit, type TestStatus } from "@/lib/constants";
 import { getTests } from "@/lib/repository";
 
@@ -26,10 +26,11 @@ function formatGrade(value: number | null) {
 }
 
 export default async function TestLibraryPage({ searchParams }: TestLibraryPageProps) {
-  await requireUser();
+  const user = await requireUser();
   const params = await searchParams;
   const tests = await getTests();
-  const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
+  const selectedUnit: QuestionUnit = getSelectedUnitForUser(user, params.unit);
+  const unitOrder = getUnitOrderForUser(user);
   const reusableTests = tests.filter((test) => test.selectionMode !== "archived_copy" && test.unit === selectedUnit);
 
   return (
@@ -41,18 +42,15 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
         </div>
       </div>
       <div className="button-row">
-        <Link
-          className={selectedUnit === "vfr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
-          href="/tests/library?unit=vfr"
-        >
-          {QUESTION_UNIT_LABELS.vfr}
-        </Link>
-        <Link
-          className={selectedUnit === "ifr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
-          href="/tests/library?unit=ifr"
-        >
-          {QUESTION_UNIT_LABELS.ifr}
-        </Link>
+        {unitOrder.map((unit) => (
+          <Link
+            key={unit}
+            className={selectedUnit === unit ? "button unit-toggle-active" : "button unit-toggle-idle"}
+            href={`/tests/library?unit=${unit}`}
+          >
+            {QUESTION_UNIT_LABELS[unit]}
+          </Link>
+        ))}
       </div>
       {params.error ? <div className="alert">{params.error}</div> : null}
 

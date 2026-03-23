@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { NewTestForm } from "@/components/NewTestForm";
-import { requireUser } from "@/lib/auth";
+import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
 import { getBonusQuestionPoints, getDefaultTestDurationMinutes, getQuestions, getStages, getSubjects } from "@/lib/repository";
 
@@ -10,9 +10,10 @@ type NewTestPageProps = {
 };
 
 export default async function NewTestPage({ searchParams }: NewTestPageProps) {
-  await requireUser();
+  const user = await requireUser();
   const params = await searchParams;
-  const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
+  const selectedUnit: QuestionUnit = getSelectedUnitForUser(user, params.unit);
+  const unitOrder = getUnitOrderForUser(user);
   const [subjects, stages, defaultDurationMinutes, bonusQuestionPoints, questions] = await Promise.all([
     getSubjects(selectedUnit),
     getStages(selectedUnit),
@@ -31,18 +32,15 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
         </div>
       </div>
       <div className="button-row">
-        <Link
-          className={selectedUnit === "vfr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
-          href="/tests/new?unit=vfr"
-        >
-          {QUESTION_UNIT_LABELS.vfr}
-        </Link>
-        <Link
-          className={selectedUnit === "ifr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
-          href="/tests/new?unit=ifr"
-        >
-          {QUESTION_UNIT_LABELS.ifr}
-        </Link>
+        {unitOrder.map((unit) => (
+          <Link
+            key={unit}
+            className={selectedUnit === unit ? "button unit-toggle-active" : "button unit-toggle-idle"}
+            href={`/tests/new?unit=${unit}`}
+          >
+            {QUESTION_UNIT_LABELS[unit]}
+          </Link>
+        ))}
       </div>
       {params.error ? <div className="alert">{params.error}</div> : null}
       <div className="card">

@@ -62,6 +62,31 @@ export async function getCurrentUser(): Promise<User | null> {
   return getUserBySessionToken(token);
 }
 
+function isQuestionUnit(value: string | undefined): value is QuestionUnit {
+  return value === "vfr" || value === "ifr";
+}
+
+export function getDefaultUnitForUser(user: Pick<User, "units">): QuestionUnit {
+  if (user.units.includes("vfr")) {
+    return "vfr";
+  }
+
+  if (user.units.includes("ifr")) {
+    return "ifr";
+  }
+
+  return "vfr";
+}
+
+export function getSelectedUnitForUser(user: Pick<User, "units">, requestedUnit?: string): QuestionUnit {
+  return isQuestionUnit(requestedUnit) ? requestedUnit : getDefaultUnitForUser(user);
+}
+
+export function getUnitOrderForUser(user: Pick<User, "units">): QuestionUnit[] {
+  const defaultUnit = getDefaultUnitForUser(user);
+  return defaultUnit === "ifr" ? ["ifr", "vfr"] : ["vfr", "ifr"];
+}
+
 export async function requireUser() {
   const user = await getCurrentUser();
   if (!user) {

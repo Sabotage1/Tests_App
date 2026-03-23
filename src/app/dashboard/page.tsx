@@ -1,9 +1,8 @@
 import Link from "next/link";
 
-import { DashboardPieChart } from "@/components/DashboardPieChart";
 import { requireUser } from "@/lib/auth";
 import { TEST_STATUSES, type TestStatus } from "@/lib/constants";
-import { getDashboardChartMetrics, getDashboardStats, getTests } from "@/lib/repository";
+import { getDashboardStats, getTests } from "@/lib/repository";
 
 type DashboardPageProps = {
   searchParams: Promise<{ status?: string }>;
@@ -21,13 +20,9 @@ function isValidStatus(status: string | undefined): status is TestStatus {
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
-  const user = await requireUser();
+  await requireUser();
   const params = await searchParams;
-  const [stats, tests, dashboardChartMetrics] = await Promise.all([
-    getDashboardStats(),
-    getTests(),
-    getDashboardChartMetrics(),
-  ]);
+  const [stats, tests] = await Promise.all([getDashboardStats(), getTests()]);
   const selectedStatus = isValidStatus(params.status) ? params.status : null;
   const filteredTests = selectedStatus ? tests.filter((test) => test.status === selectedStatus) : tests;
 
@@ -74,8 +69,6 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           <strong>{stats.failed}</strong>
         </div>
       </div>
-
-      <DashboardPieChart stats={stats} metrics={dashboardChartMetrics} canConfigure={user.role === "admin"} />
 
       <div className="card">
         <div className="page-header">

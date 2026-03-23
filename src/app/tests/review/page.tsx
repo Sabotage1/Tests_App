@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { requireUser } from "@/lib/auth";
+import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
 import { getTests } from "@/lib/repository";
 
@@ -22,10 +22,11 @@ type ReviewTestsPageProps = {
 };
 
 export default async function ReviewTestsPage({ searchParams }: ReviewTestsPageProps) {
-  await requireUser();
+  const user = await requireUser();
   const params = await searchParams;
   const tests = await getTests();
-  const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
+  const selectedUnit: QuestionUnit = getSelectedUnitForUser(user, params.unit);
+  const unitOrder = getUnitOrderForUser(user);
   const pendingTests = tests.filter((test) => test.status === "completed" && test.unit === selectedUnit);
 
   return (
@@ -37,18 +38,15 @@ export default async function ReviewTestsPage({ searchParams }: ReviewTestsPageP
         </div>
       </div>
       <div className="button-row">
-        <Link
-          className={selectedUnit === "vfr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
-          href="/tests/review?unit=vfr"
-        >
-          {QUESTION_UNIT_LABELS.vfr}
-        </Link>
-        <Link
-          className={selectedUnit === "ifr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
-          href="/tests/review?unit=ifr"
-        >
-          {QUESTION_UNIT_LABELS.ifr}
-        </Link>
+        {unitOrder.map((unit) => (
+          <Link
+            key={unit}
+            className={selectedUnit === unit ? "button unit-toggle-active" : "button unit-toggle-idle"}
+            href={`/tests/review?unit=${unit}`}
+          >
+            {QUESTION_UNIT_LABELS[unit]}
+          </Link>
+        ))}
       </div>
 
       <div className="card">

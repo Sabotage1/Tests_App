@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { archiveQuestionAction, deleteQuestionAction, saveQuestionAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
-import { requireUser } from "@/lib/auth";
+import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
 import { getQuestionById, getQuestions, getStages, getSubjects } from "@/lib/repository";
 
@@ -23,7 +23,8 @@ function getQuestionNumber(sourceReference: string | null) {
 export default async function QuestionsPage({ searchParams }: QuestionsPageProps) {
   const user = await requireUser();
   const params = await searchParams;
-  const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
+  const selectedUnit: QuestionUnit = getSelectedUnitForUser(user, params.unit);
+  const unitOrder = getUnitOrderForUser(user);
   const [questions, subjects, stages, editingQuestion] = await Promise.all([
     getQuestions(),
     getSubjects(selectedUnit),
@@ -52,18 +53,15 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       </div>
 
       <div className="button-row">
-        <Link
-          className={selectedUnit === "vfr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
-          href="/questions?unit=vfr"
-        >
-          {QUESTION_UNIT_LABELS.vfr}
-        </Link>
-        <Link
-          className={selectedUnit === "ifr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
-          href="/questions?unit=ifr"
-        >
-          {QUESTION_UNIT_LABELS.ifr}
-        </Link>
+        {unitOrder.map((unit) => (
+          <Link
+            key={unit}
+            className={selectedUnit === unit ? "button unit-toggle-active" : "button unit-toggle-idle"}
+            href={`/questions?unit=${unit}`}
+          >
+            {QUESTION_UNIT_LABELS[unit]}
+          </Link>
+        ))}
       </div>
       <div className="button-row">
         <Link className="button button-primary" href={`/questions?unit=${selectedUnit}#question-editor`} scroll>
