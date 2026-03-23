@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import type { PoolClient, QueryResultRow } from "pg";
 
-import { APP_NAME, DEFAULT_DURATION_MINUTES, MISSING_ANSWER_TEXT, type QuestionUnit } from "@/lib/constants";
+import { APP_NAME, DEFAULT_BONUS_QUESTION_POINTS, DEFAULT_DURATION_MINUTES, MISSING_ANSWER_TEXT, type QuestionUnit } from "@/lib/constants";
 import { query, withTransaction } from "@/lib/db";
 import type { DashboardStats, Option, QuestionRow, TestBuilderQuestion, TestDetails, TestListItem, User } from "@/lib/types";
 
@@ -55,6 +55,11 @@ function isMissingDuration(value: number | undefined) {
 function hasExpectedAnswer(answer: string) {
   const normalizedAnswer = answer.trim();
   return normalizedAnswer !== "" && normalizedAnswer !== MISSING_ANSWER_TEXT;
+}
+
+function getScoredQuestionCount(questions: Array<{ isBonus: boolean }>) {
+  const regularCount = questions.filter((question) => !question.isBonus).length;
+  return regularCount > 0 ? regularCount : questions.length;
 }
 
 function mapTestBuilderQuestion(row: QuestionSelectionRow): TestBuilderQuestion {
@@ -193,6 +198,16 @@ export async function getDefaultTestDurationMinutes() {
   return Number.isNaN(parsed) ? DEFAULT_DURATION_MINUTES : parsed;
 }
 
+export async function getBonusQuestionPoints() {
+  const result = await query<{ value: string }>(
+    "SELECT value FROM app_settings WHERE key = $1",
+    ["bonus_question_points"],
+  );
+
+  const parsed = Number(result.rows[0]?.value ?? DEFAULT_BONUS_QUESTION_POINTS);
+  return Number.isNaN(parsed) ? DEFAULT_BONUS_QUESTION_POINTS : parsed;
+}
+
 export async function setDefaultTestDurationMinutes(durationMinutes: number) {
   await query(
     `
@@ -202,6 +217,18 @@ export async function setDefaultTestDurationMinutes(durationMinutes: number) {
       DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
     `,
     ["default_test_duration_minutes", String(durationMinutes)],
+  );
+}
+
+export async function setBonusQuestionPoints(points: number) {
+  await query(
+    `
+      INSERT INTO app_settings (key, value, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `,
+    ["bonus_question_points", String(points)],
   );
 }
 
@@ -794,6 +821,7 @@ export async function createTest(input: {
   selectionMode: "random" | "filtered" | "manual";
   unit: QuestionUnit;
   questionCount: number;
+  bonusQuestionCount?: number;
   durationMinutes?: number;
   sentAt?: string;
   onlyAnswered?: boolean;
@@ -801,12 +829,17 @@ export async function createTest(input: {
   stageIds: string[];
   questionIds: string[];
   selectedQuestionIds?: string[];
+  bonusSelectedQuestionIds?: string[];
   studentName?: string;
   studentEmail?: string;
 }) {
   const durationMinutes = isMissingDuration(input.durationMinutes)
     ? await getDefaultTestDurationMinutes()
     : input.durationMinutes!;
+  const bonusQuestionCount =
+    input.unit === "vfr" && !Number.isNaN(input.bonusQuestionCount ?? 0)
+      ? Math.max(0, input.bonusQuestionCount ?? 0)
+      : 0;
   const explicitSelection =
     input.selectionMode === "manual" ? input.questionIds : input.selectedQuestionIds;
   const { selectedQuestions } = await getTestDraftQuestions({
@@ -818,6 +851,17 @@ export async function createTest(input: {
     stageIds: input.stageIds,
     selectedQuestionIds: explicitSelection,
   });
+  const { selectedQuestions: bonusQuestions } =
+    bonusQuestionCount > 0
+      ? await getTestDraftQuestions({
+          selectionMode: "random",
+          unit: "ifr",
+          questionCount: bonusQuestionCount,
+          subjectIds: [],
+          stageIds: [],
+          selectedQuestionIds: input.bonusSelectedQuestionIds,
+        })
+      : { selectedQuestions: [] };
 
   const testId = nanoid();
 
@@ -836,7 +880,7 @@ export async function createTest(input: {
         input.createdBy,
         input.selectionMode,
         input.unit,
-        selectedQuestions.length,
+        selectedQuestions.length + bonusQuestions.length,
         durationMinutes,
         input.studentName?.trim() || null,
         input.studentEmail?.trim() || null,
@@ -849,15 +893,39 @@ export async function createTest(input: {
       await client.query(
         `
           INSERT INTO test_questions (
-            id, test_id, question_id, order_index, prompt, expected_answer, subject_names, stage_names
+            id, test_id, question_id, order_index, is_bonus, prompt, expected_answer, subject_names, stage_names
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         `,
         [
           nanoid(),
           testId,
           question.id,
           orderIndex,
+          false,
+          question.text,
+          question.answer,
+          question.subjectNames,
+          question.stageNames,
+        ],
+      );
+      orderIndex += 1;
+    }
+
+    for (const question of bonusQuestions) {
+      await client.query(
+        `
+          INSERT INTO test_questions (
+            id, test_id, question_id, order_index, is_bonus, prompt, expected_answer, subject_names, stage_names
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `,
+        [
+          nanoid(),
+          testId,
+          question.id,
+          orderIndex,
+          true,
           question.text,
           question.answer,
           question.subjectNames,
@@ -912,15 +980,16 @@ export async function cloneTestForNewStudent(input: {
       await client.query(
         `
           INSERT INTO test_questions (
-            id, test_id, question_id, order_index, prompt, expected_answer, subject_names, stage_names
+            id, test_id, question_id, order_index, is_bonus, prompt, expected_answer, subject_names, stage_names
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         `,
         [
           nanoid(),
           newTestId,
           null,
           question.orderIndex,
+          question.isBonus,
           question.prompt,
           question.expectedAnswer,
           question.subjectNames,
@@ -1012,6 +1081,7 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string) {
   const questionsResult = await runQuery<{
     id: string;
     order_index: number;
+    is_bonus: boolean;
     prompt: string;
     expected_answer: string;
     student_answer: string | null;
@@ -1024,6 +1094,7 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string) {
       SELECT
         id,
         order_index,
+        is_bonus,
         prompt,
         expected_answer,
         student_answer,
@@ -1063,6 +1134,7 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string) {
     questions: questionsResult.rows.map((row) => ({
       id: row.id,
       orderIndex: row.order_index,
+      isBonus: row.is_bonus,
       prompt: row.prompt,
       expectedAnswer: row.expected_answer,
       studentAnswer: row.student_answer,
@@ -1203,17 +1275,49 @@ export async function gradeTest(input: {
   grades: Array<{ id: string; score: number; feedback: string }>;
 }) {
   return withTransaction(async (client) => {
-    const countResult = await client.query<{ count: string }>(
-      "SELECT COUNT(*)::text AS count FROM test_questions WHERE test_id = $1",
-      [input.testId],
-    );
-    const questionCount = Number(countResult.rows[0]?.count ?? 0);
-    const maxPerQuestion = questionCount > 0 ? 100 / questionCount : 0;
-    let total = 0;
+    const [countResult, settingsResult, questionsMetaResult] = await Promise.all([
+      client.query<{ total_count: string; regular_count: string }>(
+        `
+          SELECT
+            COUNT(*)::text AS total_count,
+            COUNT(*) FILTER (WHERE is_bonus = FALSE)::text AS regular_count
+          FROM test_questions
+          WHERE test_id = $1
+        `,
+        [input.testId],
+      ),
+      client.query<{ value: string }>(
+        "SELECT value FROM app_settings WHERE key = $1",
+        ["bonus_question_points"],
+      ),
+      client.query<{ id: string; is_bonus: boolean }>(
+        "SELECT id, is_bonus FROM test_questions WHERE test_id = $1",
+        [input.testId],
+      ),
+    ]);
+    const totalQuestionCount = Number(countResult.rows[0]?.total_count ?? 0);
+    const regularQuestionCount = Number(countResult.rows[0]?.regular_count ?? 0);
+    const scoredQuestionCount = regularQuestionCount > 0 ? regularQuestionCount : totalQuestionCount;
+    const maxPerRegularQuestion = scoredQuestionCount > 0 ? 100 / scoredQuestionCount : 0;
+    const bonusQuestionPoints = Number(settingsResult.rows[0]?.value ?? DEFAULT_BONUS_QUESTION_POINTS);
+    const safeBonusQuestionPoints = Number.isNaN(bonusQuestionPoints)
+      ? DEFAULT_BONUS_QUESTION_POINTS
+      : bonusQuestionPoints;
+    const questionMetaById = new Map(questionsMetaResult.rows.map((row) => [row.id, row.is_bonus]));
+    let regularTotal = 0;
+    let bonusTotal = 0;
 
     for (const grade of input.grades) {
-      const safeScore = Math.min(maxPerQuestion, Math.max(0, Number.isNaN(grade.score) ? 0 : grade.score));
-      total += safeScore;
+      const isBonus = questionMetaById.get(grade.id) === true;
+      const maxAllowed = isBonus ? safeBonusQuestionPoints : maxPerRegularQuestion;
+      const safeScore = Math.min(maxAllowed, Math.max(0, Number.isNaN(grade.score) ? 0 : grade.score));
+
+      if (isBonus) {
+        bonusTotal += safeScore;
+      } else {
+        regularTotal += safeScore;
+      }
+
       await client.query("UPDATE test_questions SET score = $1, feedback = $2 WHERE id = $3", [
         Number(safeScore.toFixed(2)),
         grade.feedback.trim() || null,
@@ -1221,7 +1325,7 @@ export async function gradeTest(input: {
       ]);
     }
 
-    const finalGrade = Number(Math.min(100, total).toFixed(2));
+    const finalGrade = Number((regularTotal + bonusTotal).toFixed(2));
 
     await client.query(
       `
@@ -1252,7 +1356,7 @@ function buildGradeEmailHtml(test: TestDetails) {
     .map((question) => {
       return `
         <div style="margin-bottom:24px;padding:16px;border:1px solid #d2d8e5;border-radius:12px">
-          <div style="font-weight:700;margin-bottom:8px">שאלה ${question.orderIndex}</div>
+          <div style="font-weight:700;margin-bottom:8px">${question.isBonus ? "שאלת בונוס" : "שאלה"} ${question.orderIndex}</div>
           <div style="white-space:pre-wrap;margin-bottom:10px">${question.prompt}</div>
           <div style="margin-bottom:6px"><strong>תשובת תלמיד:</strong><br>${question.studentAnswer || "-"}</div>
           <div style="margin-bottom:6px"><strong>ציון לשאלה:</strong> ${question.score ?? 0}</div>

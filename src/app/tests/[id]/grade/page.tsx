@@ -4,7 +4,7 @@ import { gradeTestAction, gradeTestWithAiAction } from "@/app/actions";
 import { requireUser } from "@/lib/auth";
 import { AiGradingButton } from "@/components/AiGradingButton";
 import { SubmitButton } from "@/components/SubmitButton";
-import { getTestById } from "@/lib/repository";
+import { getBonusQuestionPoints, getTestById } from "@/lib/repository";
 
 type GradePageProps = {
   params: Promise<{ id: string }>;
@@ -28,14 +28,17 @@ export default async function GradePage({ params, searchParams }: GradePageProps
   await requireUser();
   const { id } = await params;
   const query = await searchParams;
-  const test = await getTestById(id);
+  const [test, bonusQuestionPoints] = await Promise.all([getTestById(id), getBonusQuestionPoints()]);
 
   if (!test) {
     notFound();
   }
 
   const solvedMinutes = getSolvedMinutes(test.startedAt, test.submittedAt);
-  const maxPerQuestion = test.questions.length > 0 ? Number((100 / test.questions.length).toFixed(2)) : 0;
+  const regularQuestionCount = test.questions.filter((question) => !question.isBonus).length;
+  const scoredQuestionCount = regularQuestionCount > 0 ? regularQuestionCount : test.questions.length;
+  const maxPerRegularQuestion = scoredQuestionCount > 0 ? Number((100 / scoredQuestionCount).toFixed(2)) : 0;
+  const bonusQuestionCount = test.questions.filter((question) => question.isBonus).length;
 
   return (
     <div className="stack">
@@ -49,8 +52,11 @@ export default async function GradePage({ params, searchParams }: GradePageProps
             {solvedMinutes !== null ? `${solvedMinutes} דקות` : "-"}
           </p>
           <p className="muted">
-            ציון סופי מחושב כסכום עד 100. כל שאלה שווה עד {maxPerQuestion} נקודות במבחן הזה.
+            ציון הבסיס מחושב עד 100. כל שאלה רגילה שווה עד {maxPerRegularQuestion} נקודות.
           </p>
+          {bonusQuestionCount > 0 ? (
+            <p className="muted">כל שאלת בונוס שווה {bonusQuestionPoints} נקודות מעל 100 ומחוץ לחישוב הרגיל של המבחן.</p>
+          ) : null}
           {test.status === "graded" ? (
             <p className="muted">הבדיקה כבר נשמרה בעבר וניתן לערוך אותה מחדש במקרה של ערעור ולשמור שוב.</p>
           ) : null}
@@ -71,7 +77,8 @@ export default async function GradePage({ params, searchParams }: GradePageProps
           {test.questions.map((question) => (
             <div className="card" key={question.id}>
               <input type="hidden" name="questionIds" value={question.id} />
-              <strong>שאלה {question.orderIndex}</strong>
+              <strong>{question.isBonus ? "שאלת בונוס" : "שאלה"} {question.orderIndex}</strong>
+              {question.isBonus ? <p className="muted">שאלה זו נמשכה ממאגר יחידת המכ"ם ומסומנת כשאלת בונוס.</p> : null}
               <p style={{ whiteSpace: "pre-wrap" }}>{question.prompt}</p>
               <div className="split grade-split">
                 <div className="question-block grade-panel expected-answer">
@@ -90,7 +97,7 @@ export default async function GradePage({ params, searchParams }: GradePageProps
                     type="number"
                     name={`score:${question.id}`}
                     min="0"
-                    max={maxPerQuestion}
+                    max={question.isBonus ? bonusQuestionPoints : maxPerRegularQuestion}
                     step="0.01"
                     defaultValue={question.score ?? 0}
                     required

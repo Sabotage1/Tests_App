@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getTestById, gradeTest } from "@/lib/repository";
+import { getBonusQuestionPoints, getTestById, gradeTest } from "@/lib/repository";
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
@@ -18,9 +18,11 @@ const gradeSchema = z.object({
 
 function buildPrompt(input: {
   title: string;
-  maxPerQuestion: number;
+  maxPerRegularQuestion: number;
+  bonusQuestionPoints: number;
   questions: Array<{
     id: string;
+    isBonus: boolean;
     orderIndex: number;
     prompt: string;
     expectedAnswer: string;
@@ -32,6 +34,7 @@ function buildPrompt(input: {
       return [
         `Question ID: ${question.id}`,
         `Question Number: ${question.orderIndex}`,
+        `Bonus Question: ${question.isBonus ? "yes" : "no"}`,
         `Prompt:`,
         question.prompt,
         `Expected Answer:`,
@@ -48,8 +51,10 @@ Return only JSON according to the provided schema.
 
 Rules:
 - Grade each question by comparing the student's answer to the expected answer.
-- The maximum score for each question is ${input.maxPerQuestion}.
+- Regular questions have a maximum score of ${input.maxPerRegularQuestion}.
+- Bonus questions have a maximum score of ${input.bonusQuestionPoints}.
 - The minimum score for each question is 0.
+- Bonus questions add points above 100 and are not part of the normal 100-point calculation.
 - Be strict but fair.
 - If the expected answer is "צריך להוסיף תשובה לשאלה", give score 0 and explain that a model answer is missing.
 - If the student answer is empty, give score 0 and explain that no answer was provided.
@@ -84,7 +89,7 @@ export async function gradeTestWithAi(testId: string, gradedByName: string) {
     throw new Error("יש להגדיר GEMINI_API_KEY כדי להשתמש בבדיקת AI.");
   }
 
-  const test = await getTestById(testId);
+  const [test, bonusQuestionPoints] = await Promise.all([getTestById(testId), getBonusQuestionPoints()]);
   if (!test) {
     throw new Error("המבחן לא נמצא.");
   }
@@ -93,7 +98,10 @@ export async function gradeTestWithAi(testId: string, gradedByName: string) {
     throw new Error("לא ניתן לבדוק מבחן ללא שאלות.");
   }
 
-  const maxPerQuestion = Number((100 / test.questions.length).toFixed(2));
+  const regularQuestionCount = test.questions.filter((question) => !question.isBonus).length;
+  const scoredQuestionCount = regularQuestionCount > 0 ? regularQuestionCount : test.questions.length;
+  const maxPerRegularQuestion = Number((100 / scoredQuestionCount).toFixed(2));
+  const maxGeneratedScore = Math.max(maxPerRegularQuestion, bonusQuestionPoints);
   const response = await fetch(ENDPOINT, {
     method: "POST",
     headers: {
@@ -107,9 +115,11 @@ export async function gradeTestWithAi(testId: string, gradedByName: string) {
             {
               text: buildPrompt({
                 title: test.title,
-                maxPerQuestion,
+                maxPerRegularQuestion,
+                bonusQuestionPoints,
                 questions: test.questions.map((question) => ({
                   id: question.id,
+                  isBonus: question.isBonus,
                   orderIndex: question.orderIndex,
                   prompt: question.prompt,
                   expectedAnswer: question.expectedAnswer,
@@ -131,7 +141,7 @@ export async function gradeTestWithAi(testId: string, gradedByName: string) {
                 type: "object",
                 properties: {
                   id: { type: "string" },
-                  score: { type: "number", minimum: 0, maximum: maxPerQuestion },
+                  score: { type: "number", minimum: 0, maximum: maxGeneratedScore },
                   feedback: { type: "string" },
                 },
                 required: ["id", "score", "feedback"],

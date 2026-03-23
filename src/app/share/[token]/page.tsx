@@ -100,7 +100,8 @@ export default async function SharePage({ params, searchParams }: SharePageProps
           {test.questions.map((question) => (
             <div className="card" key={question.id}>
               <input type="hidden" name="questionIds" value={question.id} />
-              <strong>שאלה {question.orderIndex}</strong>
+              <strong>{question.isBonus ? "שאלת בונוס" : "שאלה"} {question.orderIndex}</strong>
+              {question.isBonus ? <p className="muted">שאלה זו היא שאלת בונוס ממאגר יחידת המכ"ם.</p> : null}
               <p style={{ whiteSpace: "pre-wrap" }}>{question.prompt}</p>
               <label>
                 תשובתך

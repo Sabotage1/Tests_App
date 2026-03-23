@@ -25,6 +25,8 @@ export default async function PrintTestPage({ params }: PrintPageProps) {
   const isGraded = test.status === "graded";
   const durationLabel = test.durationMinutes === 0 ? "ללא הגבלת זמן" : `${test.durationMinutes} דקות`;
   const performedAtLabel = getPerformedAtLabel(test.startedAt, test.submittedAt, test.sentAt);
+  const bonusQuestionCount = test.questions.filter((question) => question.isBonus).length;
+  const regularQuestionCount = test.questions.length - bonusQuestionCount;
 
   return (
     <div className="print-shell">
@@ -33,6 +35,10 @@ export default async function PrintTestPage({ params }: PrintPageProps) {
       </div>
       <h1>{test.title}</h1>
       <p>משך: {durationLabel}</p>
+      <p>
+        שאלות: {regularQuestionCount}
+        {bonusQuestionCount > 0 ? ` + ${bonusQuestionCount} בונוס` : ""}
+      </p>
       <p>נבחן: {test.studentName || "-"}</p>
       <p>תאריך ביצוע הבחינה: {performedAtLabel}</p>
       {isGraded ? (
@@ -45,7 +51,8 @@ export default async function PrintTestPage({ params }: PrintPageProps) {
       <div className="stack">
         {test.questions.map((question) => (
           <div key={question.id} style={{ marginBottom: 28 }}>
-            <h3>שאלה {question.orderIndex}</h3>
+            <h3>{question.isBonus ? "שאלת בונוס" : "שאלה"} {question.orderIndex}</h3>
+            {question.isBonus ? <p>שאלה זו נוספה ממאגר יחידת המכ"ם כשאלת בונוס.</p> : null}
             <p style={{ whiteSpace: "pre-wrap" }}>{question.prompt}</p>
             {isGraded ? (
               <>

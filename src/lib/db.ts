@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 
-import { DEFAULT_DURATION_MINUTES } from "@/lib/constants";
+import { DEFAULT_BONUS_QUESTION_POINTS, DEFAULT_DURATION_MINUTES } from "@/lib/constants";
 import { getSeedQuestions, getSeedStages, getSeedSubjects } from "@/lib/seed";
 
 const DEVELOPMENT_INITIAL_USERS = [
@@ -159,6 +159,7 @@ async function createSchema(client: PoolClient) {
       test_id TEXT NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
       question_id TEXT REFERENCES questions(id) ON DELETE SET NULL,
       order_index INTEGER NOT NULL,
+      is_bonus BOOLEAN NOT NULL DEFAULT FALSE,
       prompt TEXT NOT NULL,
       expected_answer TEXT NOT NULL,
       subject_names TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
@@ -178,6 +179,7 @@ async function createSchema(client: PoolClient) {
     ALTER TABLE questions ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
     ALTER TABLE tests ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS review_notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE test_questions ADD COLUMN IF NOT EXISTS is_bonus BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 
   await client.query(`
@@ -320,6 +322,15 @@ async function seedSettings(client: PoolClient) {
       ON CONFLICT (key) DO NOTHING
     `,
     ["default_test_duration_minutes", String(DEFAULT_DURATION_MINUTES)],
+  );
+
+  await client.query(
+    `
+      INSERT INTO app_settings (key, value, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (key) DO NOTHING
+    `,
+    ["bonus_question_points", String(DEFAULT_BONUS_QUESTION_POINTS)],
   );
 }
 

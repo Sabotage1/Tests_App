@@ -20,10 +20,12 @@ import {
   ensureShareToken,
   gradeTest,
   getDefaultTestDurationMinutes,
+  getBonusQuestionPoints,
   getTestDraftQuestions,
   sendGradeEmail,
   sendReviewNotificationEmails,
   sendTestInvitationEmail,
+  setBonusQuestionPoints,
   setDefaultTestDurationMinutes,
   startTestByToken,
   submitTestByToken,
@@ -270,6 +272,21 @@ export async function saveDefaultDurationAction(formData: FormData) {
   redirect("/settings?durationSaved=1");
 }
 
+export async function saveBonusQuestionPointsAction(formData: FormData) {
+  await requireAdmin();
+
+  const rawValue = formData.get("bonusQuestionPoints")?.toString().trim() ?? "";
+  const currentValue = await getBonusQuestionPoints();
+  const points = rawValue === "" ? currentValue : Number(rawValue);
+
+  await setBonusQuestionPoints(Number.isNaN(points) ? currentValue : points);
+  revalidatePath("/settings");
+  revalidatePath("/tests/new");
+  revalidatePath("/tests/new/review");
+  revalidatePath("/tests/graded");
+  redirect("/settings?bonusSaved=1");
+}
+
 export async function createTestAction(formData: FormData) {
   const user = await requireEditor();
   const rawDuration = formData.get("durationMinutes")?.toString().trim() ?? "";
@@ -283,6 +300,7 @@ export async function createTestAction(formData: FormData) {
       selectionMode: (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered" | "manual",
       unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
       questionCount: Number(formData.get("questionCount")?.toString() ?? "0"),
+      bonusQuestionCount: Number(formData.get("bonusQuestionCount")?.toString() ?? "0"),
       durationMinutes: rawDuration === "" ? undefined : Number(rawDuration),
       sentAt: formData.get("sentAt")?.toString() ?? "",
       onlyAnswered: formData.get("onlyAnswered")?.toString() === "on",
@@ -290,6 +308,7 @@ export async function createTestAction(formData: FormData) {
       stageIds: getMany(formData, "stageIds"),
       questionIds: getMany(formData, "questionIds"),
       selectedQuestionIds: getMany(formData, "selectedQuestionIds"),
+      bonusSelectedQuestionIds: getMany(formData, "bonusSelectedQuestionIds"),
       studentName: formData.get("studentName")?.toString() ?? "",
       studentEmail: formData.get("studentEmail")?.toString() ?? "",
     });
@@ -316,6 +335,8 @@ export async function prepareTestDraftAction(formData: FormData) {
   const stageIds = getMany(formData, "stageIds");
   const onlyAnswered = formData.get("onlyAnswered")?.toString() === "on";
   const questionCount = Number(formData.get("questionCount")?.toString() ?? "0");
+  const bonusQuestionCount =
+    unit === "vfr" ? Number(formData.get("bonusQuestionCount")?.toString() ?? "0") : 0;
   let redirectPath: RedirectPath | null = null;
 
   try {
@@ -327,12 +348,23 @@ export async function prepareTestDraftAction(formData: FormData) {
       subjectIds,
       stageIds,
     });
+    const bonusDraft =
+      bonusQuestionCount > 0
+        ? await getTestDraftQuestions({
+            selectionMode: "random",
+            unit: "ifr",
+            questionCount: bonusQuestionCount,
+            subjectIds: [],
+            stageIds: [],
+          })
+        : { selectedQuestions: [] };
 
     const params = new URLSearchParams();
     params.set("title", formData.get("title")?.toString() ?? "");
     params.set("selectionMode", selectionMode);
     params.set("unit", unit);
     params.set("questionCount", String(questionCount));
+    params.set("bonusQuestionCount", String(Math.max(0, Number.isNaN(bonusQuestionCount) ? 0 : bonusQuestionCount)));
     params.set("durationMinutes", formData.get("durationMinutes")?.toString() ?? "");
     params.set("sentAt", formData.get("sentAt")?.toString() ?? "");
     params.set("studentName", formData.get("studentName")?.toString() ?? "");
@@ -348,6 +380,11 @@ export async function prepareTestDraftAction(formData: FormData) {
       params,
       "selectedQuestionIds",
       draft.selectedQuestions.map((question) => question.id),
+    );
+    appendMany(
+      params,
+      "bonusSelectedQuestionIds",
+      bonusDraft.selectedQuestions.map((question) => question.id),
     );
     redirectPath = `/tests/new/review?${params.toString()}` as RedirectPath;
   } catch (error) {

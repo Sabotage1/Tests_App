@@ -66,6 +66,7 @@ export type TestListItem = {
 export type TestQuestion = {
   id: string;
   orderIndex: number;
+  isBonus: boolean;
   prompt: string;
   expectedAnswer: string;
   studentAnswer: string | null;

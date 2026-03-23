@@ -3,7 +3,7 @@ import Link from "next/link";
 import { NewTestForm } from "@/components/NewTestForm";
 import { requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
-import { getDefaultTestDurationMinutes, getQuestions, getStages, getSubjects } from "@/lib/repository";
+import { getBonusQuestionPoints, getDefaultTestDurationMinutes, getQuestions, getStages, getSubjects } from "@/lib/repository";
 
 type NewTestPageProps = {
   searchParams: Promise<{ error?: string; unit?: string }>;
@@ -12,10 +12,11 @@ type NewTestPageProps = {
 export default async function NewTestPage({ searchParams }: NewTestPageProps) {
   await requireUser();
   const params = await searchParams;
-  const [subjects, stages, defaultDurationMinutes, questions] = await Promise.all([
+  const [subjects, stages, defaultDurationMinutes, bonusQuestionPoints, questions] = await Promise.all([
     getSubjects(),
     getStages(),
     getDefaultTestDurationMinutes(),
+    getBonusQuestionPoints(),
     getQuestions(),
   ]);
   const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
@@ -47,6 +48,7 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
       <div className="card">
         <NewTestForm
           activeQuestions={activeQuestions}
+          bonusQuestionPoints={bonusQuestionPoints}
           defaultDurationMinutes={defaultDurationMinutes}
           selectedUnit={selectedUnit}
           stages={stages}

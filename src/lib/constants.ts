@@ -4,6 +4,7 @@ export const APP_VERSION = "1.2.1";
 export const SESSION_COOKIE = "atc_session";
 
 export const DEFAULT_DURATION_MINUTES = 90;
+export const DEFAULT_BONUS_QUESTION_POINTS = 5;
 export const MISSING_ANSWER_TEXT = "צריך להוסיף תשובה לשאלה";
 
 export const INITIAL_STAGES = [

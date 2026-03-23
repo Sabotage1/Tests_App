@@ -5,6 +5,7 @@ import { requireEditor } from "@/lib/auth";
 import type { QuestionUnit } from "@/lib/constants";
 import { QUESTION_UNIT_LABELS } from "@/lib/constants";
 import { getTestDraftQuestions } from "@/lib/repository";
+import type { TestBuilderQuestion } from "@/lib/types";
 
 type ReviewPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -28,7 +29,9 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
   const unit: QuestionUnit = getSingleValue(params.unit) === "ifr" ? "ifr" : "vfr";
   const selectionMode = getSingleValue(params.selectionMode) === "filtered" ? "filtered" : "random";
   const selectedQuestionIds = getManyValues(params.selectedQuestionIds);
+  const bonusSelectedQuestionIds = getManyValues(params.bonusSelectedQuestionIds);
   const questionCount = Number(getSingleValue(params.questionCount) || "0");
+  const bonusQuestionCount = Number(getSingleValue(params.bonusQuestionCount) || "0");
   const onlyAnswered = getSingleValue(params.onlyAnswered) === "1";
   const subjectIds = getManyValues(params.subjectIds);
   const stageIds = getManyValues(params.stageIds);
@@ -38,6 +41,10 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
   }
 
   let draft;
+  let bonusDraft: { eligibleQuestions: TestBuilderQuestion[]; selectedQuestions: TestBuilderQuestion[] } = {
+    eligibleQuestions: [],
+    selectedQuestions: [],
+  };
 
   try {
     draft = await getTestDraftQuestions({
@@ -49,6 +56,17 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
       stageIds,
       selectedQuestionIds,
     });
+
+    if (unit === "vfr" && bonusQuestionCount > 0) {
+      bonusDraft = await getTestDraftQuestions({
+        selectionMode: "random",
+        unit: "ifr",
+        questionCount: bonusQuestionCount,
+        subjectIds: [],
+        stageIds: [],
+        selectedQuestionIds: bonusSelectedQuestionIds.length > 0 ? bonusSelectedQuestionIds : undefined,
+      });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "טעינת טיוטת המבחן נכשלה";
     redirect(`/tests/new?unit=${unit}&error=${encodeURIComponent(message)}`);
@@ -66,6 +84,9 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
       <TestDraftReview
         backHref={`/tests/new?unit=${unit}`}
         durationMinutes={getSingleValue(params.durationMinutes)}
+        bonusEligibleQuestions={bonusDraft.eligibleQuestions}
+        bonusQuestionCount={bonusDraft.selectedQuestions.length}
+        initialSelectedBonusQuestionIds={bonusDraft.selectedQuestions.map((question) => question.id)}
         eligibleQuestions={draft.eligibleQuestions}
         initialSelectedQuestionIds={draft.selectedQuestions.map((question) => question.id)}
         onlyAnswered={onlyAnswered}

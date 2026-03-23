@@ -3,6 +3,7 @@ import {
   deleteAllTestsAction,
   deleteLookupAction,
   deleteUserAction,
+  saveBonusQuestionPointsAction,
   saveDefaultDurationAction,
   saveLookupAction,
   saveUserAction,
@@ -10,11 +11,12 @@ import {
 } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
-import { getDefaultTestDurationMinutes, getStages, getSubjects, getUsers } from "@/lib/repository";
+import { getBonusQuestionPoints, getDefaultTestDurationMinutes, getStages, getSubjects, getUsers } from "@/lib/repository";
 
 type SettingsPageProps = {
   searchParams: Promise<{
     durationSaved?: string;
+    bonusSaved?: string;
     passwordSaved?: string;
     passwordError?: string;
     userSaved?: string;
@@ -29,11 +31,12 @@ type SettingsPageProps = {
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const user = await requireUser();
   const params = await searchParams;
-  const [subjects, stages, users, defaultDurationMinutes] = await Promise.all([
+  const [subjects, stages, users, defaultDurationMinutes, bonusQuestionPoints] = await Promise.all([
     getSubjects(),
     getStages(),
     getUsers(),
     getDefaultTestDurationMinutes(),
+    getBonusQuestionPoints(),
   ]);
 
   return (
@@ -46,6 +49,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       </div>
 
       {params.durationSaved ? <div className="alert">ברירת המחדל למשך מבחן נשמרה.</div> : null}
+      {params.bonusSaved ? <div className="alert">שווי שאלת הבונוס נשמר.</div> : null}
       {params.passwordSaved ? <div className="alert">הסיסמה עודכנה בהצלחה.</div> : null}
       {params.passwordError ? <div className="alert">עדכון הסיסמה נכשל. בדוק את הסיסמה הנוכחית ואת האימות.</div> : null}
       {params.userSaved ? <div className="alert">פרטי המשתמש נשמרו.</div> : null}
@@ -75,6 +79,30 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           </SubmitButton>
         </form>
       </div>
+
+      {user.role === "admin" ? (
+        <div className="card">
+          <h3>שווי שאלת בונוס</h3>
+          <form action={saveBonusQuestionPointsAction}>
+            <div className="grid grid-2">
+              <label>
+                נקודות לכל שאלת בונוס
+                <input
+                  name="bonusQuestionPoints"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  defaultValue={bonusQuestionPoints}
+                />
+              </label>
+            </div>
+            <p className="muted">הנקודות האלה מתווספות מעל 100 ומחוץ לחישוב הרגיל של שאלות המבחן.</p>
+            <SubmitButton pendingLabel="שומר נקודות בונוס...">
+              שמירת שווי שאלת בונוס
+            </SubmitButton>
+          </form>
+        </div>
+      ) : null}
 
       <div className="card">
         <h3>שינוי סיסמה</h3>

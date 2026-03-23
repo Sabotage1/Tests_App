@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type Dispatch, type SetStateAction, useState } from "react";
 
 import { createTestAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -10,8 +10,11 @@ import type { TestBuilderQuestion } from "@/lib/types";
 
 type TestDraftReviewProps = {
   backHref: string;
+  bonusEligibleQuestions: TestBuilderQuestion[];
+  bonusQuestionCount: number;
   durationMinutes: string;
   eligibleQuestions: TestBuilderQuestion[];
+  initialSelectedBonusQuestionIds: string[];
   initialSelectedQuestionIds: string[];
   onlyAnswered: boolean;
   questionCount: number;
@@ -32,8 +35,11 @@ const selectionModeLabels = {
 
 export function TestDraftReview({
   backHref,
+  bonusEligibleQuestions,
+  bonusQuestionCount,
   durationMinutes,
   eligibleQuestions,
+  initialSelectedBonusQuestionIds,
   initialSelectedQuestionIds,
   onlyAnswered,
   questionCount,
@@ -47,7 +53,96 @@ export function TestDraftReview({
   unit,
 }: TestDraftReviewProps) {
   const [selectedQuestionIds, setSelectedQuestionIds] = useState(initialSelectedQuestionIds);
+  const [selectedBonusQuestionIds, setSelectedBonusQuestionIds] = useState(initialSelectedBonusQuestionIds);
   const questionsById = new Map(eligibleQuestions.map((question) => [question.id, question]));
+  const bonusQuestionsById = new Map(bonusEligibleQuestions.map((question) => [question.id, question]));
+  const totalQuestionCount = selectedQuestionIds.length + selectedBonusQuestionIds.length;
+
+  function renderQuestionSection(input: {
+    eligibleQuestions: TestBuilderQuestion[];
+    questionsById: Map<string, TestBuilderQuestion>;
+    selectedIds: string[];
+    setSelectedIds: Dispatch<SetStateAction<string[]>>;
+    title: string;
+    replacementLabel: string;
+    slotPrefix: string;
+    isBonus?: boolean;
+  }) {
+    if (input.selectedIds.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="stack">
+        <h3>{input.title}</h3>
+        {input.selectedIds.map((questionId, index) => {
+          const currentQuestion = input.questionsById.get(questionId);
+          if (!currentQuestion) {
+            return (
+              <div className="alert" key={`missing-${input.slotPrefix}-${index}`}>
+                אחת השאלות שנבחרו כבר לא זמינה. חזור למסך הקודם ובנה את הטיוטה מחדש.
+              </div>
+            );
+          }
+
+          return (
+            <div className="card question-review-card" key={`${input.slotPrefix}-${currentQuestion.id}-${index}`}>
+              <div className="page-header">
+                <div>
+                  <h3>{currentQuestion.sourceReference || `שאלה ${index + 1}`}</h3>
+                  <p>
+                    {currentQuestion.source} | {currentQuestion.questionType === "multiple_choice" ? "רב ברירה" : "פתוחה"}
+                  </p>
+                </div>
+                <div className="question-review-slot">
+                  {input.isBonus ? `בונוס ${index + 1}` : `מקום ${index + 1}`}
+                </div>
+              </div>
+
+              <label>
+                {input.replacementLabel}
+                <select
+                  value={questionId}
+                  onChange={(event) => {
+                    const nextQuestionId = event.target.value;
+                    input.setSelectedIds((current) =>
+                      current.map((id, currentIndex) => (currentIndex === index ? nextQuestionId : id)),
+                    );
+                  }}
+                >
+                  {input.eligibleQuestions.map((option) => {
+                    const usedInAnotherSlot =
+                      input.selectedIds.includes(option.id) && input.selectedIds[index] !== option.id;
+
+                    return (
+                      <option disabled={usedInAnotherSlot} key={option.id} value={option.id}>
+                        {(option.sourceReference || "ללא סימוכין") + " | " + option.source}
+                      </option>
+                    );
+                  })}
+                </select>
+              </label>
+
+              <p style={{ whiteSpace: "pre-wrap" }}>{currentQuestion.text}</p>
+
+              <div className="pill-row">
+                {currentQuestion.subjectNames.map((subject) => (
+                  <span className="pill" key={`subject-${currentQuestion.id}-${subject}`}>
+                    {subject}
+                  </span>
+                ))}
+                {currentQuestion.stageNames.map((stage) => (
+                  <span className="pill" key={`stage-${currentQuestion.id}-${stage}`}>
+                    {stage}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div className="stack">
@@ -63,6 +158,7 @@ export function TestDraftReview({
           <strong>{title || "מבחן חדש"}</strong>
           <p className="muted" style={{ marginTop: 6 }}>
             {QUESTION_UNIT_LABELS[unit]} | {selectionModeLabels[selectionMode]} | {questionCount} שאלות
+            {bonusQuestionCount > 0 ? ` + ${bonusQuestionCount} בונוס` : ""}
           </p>
         </div>
       </div>
@@ -72,6 +168,7 @@ export function TestDraftReview({
         <input type="hidden" name="selectionMode" value={selectionMode} />
         <input type="hidden" name="unit" value={unit} />
         <input type="hidden" name="questionCount" value={String(selectedQuestionIds.length)} />
+        <input type="hidden" name="bonusQuestionCount" value={String(selectedBonusQuestionIds.length)} />
         <input type="hidden" name="durationMinutes" value={durationMinutes} />
         <input type="hidden" name="sentAt" value={sentAt} />
         <input type="hidden" name="studentName" value={studentName} />
@@ -86,68 +183,29 @@ export function TestDraftReview({
         {selectedQuestionIds.map((questionId, index) => (
           <input key={`${questionId}-${index}`} type="hidden" name="selectedQuestionIds" value={questionId} />
         ))}
+        {selectedBonusQuestionIds.map((questionId, index) => (
+          <input key={`bonus-${questionId}-${index}`} type="hidden" name="bonusSelectedQuestionIds" value={questionId} />
+        ))}
 
         <div className="stack">
-          {selectedQuestionIds.map((questionId, index) => {
-            const currentQuestion = questionsById.get(questionId);
-            if (!currentQuestion) {
-              return (
-                <div className="alert" key={`missing-${index}`}>
-                  אחת השאלות שנבחרו כבר לא זמינה. חזור למסך הקודם ובנה את הטיוטה מחדש.
-                </div>
-              );
-            }
-
-            return (
-              <div className="card question-review-card" key={`${currentQuestion.id}-${index}`}>
-                <div className="page-header">
-                  <div>
-                    <h3>{currentQuestion.sourceReference || `שאלה ${index + 1}`}</h3>
-                    <p>
-                      {currentQuestion.source} | {currentQuestion.questionType === "multiple_choice" ? "רב ברירה" : "פתוחה"}
-                    </p>
-                  </div>
-                  <div className="question-review-slot">מקום {index + 1}</div>
-                </div>
-
-                <label>
-                  החלפת שאלה
-                  <select
-                    value={questionId}
-                    onChange={(event) => {
-                      const nextQuestionId = event.target.value;
-                      setSelectedQuestionIds((current) => current.map((id, currentIndex) => (currentIndex === index ? nextQuestionId : id)));
-                    }}
-                  >
-                    {eligibleQuestions.map((option) => {
-                      const usedInAnotherSlot =
-                        selectedQuestionIds.includes(option.id) && selectedQuestionIds[index] !== option.id;
-
-                      return (
-                        <option disabled={usedInAnotherSlot} key={option.id} value={option.id}>
-                          {(option.sourceReference || "ללא סימוכין") + " | " + option.source}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </label>
-
-                <p style={{ whiteSpace: "pre-wrap" }}>{currentQuestion.text}</p>
-
-                <div className="pill-row">
-                  {currentQuestion.subjectNames.map((subject) => (
-                    <span className="pill" key={`subject-${currentQuestion.id}-${subject}`}>
-                      {subject}
-                    </span>
-                  ))}
-                  {currentQuestion.stageNames.map((stage) => (
-                    <span className="pill" key={`stage-${currentQuestion.id}-${stage}`}>
-                      {stage}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            );
+          {renderQuestionSection({
+            eligibleQuestions,
+            questionsById,
+            selectedIds: selectedQuestionIds,
+            setSelectedIds: setSelectedQuestionIds,
+            title: "שאלות המבחן",
+            replacementLabel: "החלפת שאלה",
+            slotPrefix: "regular",
+          })}
+          {renderQuestionSection({
+            eligibleQuestions: bonusEligibleQuestions,
+            questionsById: bonusQuestionsById,
+            selectedIds: selectedBonusQuestionIds,
+            setSelectedIds: setSelectedBonusQuestionIds,
+            title: 'שאלות בונוס ממאגר המכ"ם',
+            replacementLabel: "החלפת שאלת בונוס",
+            slotPrefix: "bonus",
+            isBonus: true,
           })}
         </div>
 
@@ -156,7 +214,7 @@ export function TestDraftReview({
             חזרה לעריכת המבחן
           </a>
           <SubmitButton pendingLabel="שומר מבחן...">
-            יצירת המבחן הסופי
+            יצירת המבחן הסופי ({totalQuestionCount} שאלות)
           </SubmitButton>
         </div>
       </form>

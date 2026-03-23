@@ -67,13 +67,17 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
     notFound();
   }
 
+  const bonusQuestionCount = test.questions.filter((question) => question.isBonus).length;
+  const regularQuestionCount = test.questions.length - bonusQuestionCount;
+
   return (
     <div className="stack">
       <div className="page-header">
         <div>
           <h2>{test.title}</h2>
           <p>
-            סטטוס: {STATUS_LABELS[test.status]} | יוצר: {test.creatorName} | שאלות: {test.questionCount}
+            סטטוס: {STATUS_LABELS[test.status]} | יוצר: {test.creatorName} | שאלות: {regularQuestionCount}
+            {bonusQuestionCount > 0 ? ` + ${bonusQuestionCount} בונוס` : ""}
           </p>
         </div>
         <div className="button-row">
@@ -169,7 +173,8 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
           <div className="stack">
             {test.questions.map((question) => (
               <div className="question-block" key={question.id}>
-                <strong>שאלה {question.orderIndex}</strong>
+                <strong>{question.isBonus ? "שאלת בונוס" : "שאלה"} {question.orderIndex}</strong>
+                {question.isBonus ? <p className="muted">שאלה זו נוספה ממאגר יחידת המכ"ם כשאלת בונוס.</p> : null}
                 <p style={{ whiteSpace: "pre-wrap" }}>{question.prompt}</p>
                 <div className="pill-row">
                   {question.subjectNames.map((subject) => (
