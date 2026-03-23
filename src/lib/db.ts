@@ -81,6 +81,7 @@ async function createSchema(client: PoolClient) {
       email TEXT,
       role TEXT NOT NULL,
       review_notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      units TEXT[] NOT NULL DEFAULT ARRAY['vfr', 'ifr']::TEXT[],
       password_hash TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL
     );
@@ -181,6 +182,7 @@ async function createSchema(client: PoolClient) {
     ALTER TABLE questions ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
     ALTER TABLE tests ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS review_notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS units TEXT[] NOT NULL DEFAULT ARRAY['vfr', 'ifr']::TEXT[];
     ALTER TABLE test_questions ADD COLUMN IF NOT EXISTS is_bonus BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE subjects ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
     ALTER TABLE stages ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
@@ -202,6 +204,10 @@ async function createSchema(client: PoolClient) {
     UPDATE stages
     SET unit = 'vfr'
     WHERE unit IS NULL OR unit = '';
+
+    UPDATE users
+    SET units = ARRAY['vfr', 'ifr']::TEXT[]
+    WHERE units IS NULL OR cardinality(units) = 0;
   `);
 
   await client.query(`

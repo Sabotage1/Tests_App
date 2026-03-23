@@ -7,6 +7,7 @@ export type User = {
   email: string | null;
   role: UserRole;
   reviewNotificationsEnabled: boolean;
+  units: QuestionUnit[];
 };
 
 export type Option = {

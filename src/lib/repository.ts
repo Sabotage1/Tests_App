@@ -13,6 +13,7 @@ type UserRow = {
   email: string | null;
   role: "admin" | "editor" | "viewer";
   review_notifications_enabled: boolean;
+  units: QuestionUnit[] | null;
   password_hash: string;
 };
 
@@ -24,6 +25,7 @@ function mapUser(row: UserRow): User {
     email: row.email,
     role: row.role,
     reviewNotificationsEnabled: row.review_notifications_enabled,
+    units: formatArray(row.units) as QuestionUnit[],
   };
 }
 
@@ -165,6 +167,7 @@ export async function authenticateUser(username: string, password: string) {
   const result = await query<UserRow>(
     `
       SELECT id, username, display_name, email, role, review_notifications_enabled, password_hash
+      , units
       FROM users
       WHERE username = $1
     `,
@@ -273,8 +276,9 @@ export async function getUsers() {
     email: string | null;
     role: "admin" | "editor" | "viewer";
     review_notifications_enabled: boolean;
+    units: QuestionUnit[] | null;
   }>(`
-    SELECT id, username, display_name, email, role, review_notifications_enabled
+    SELECT id, username, display_name, email, role, review_notifications_enabled, units
     FROM users
     ORDER BY role, display_name
   `);
@@ -286,6 +290,7 @@ export async function getUsers() {
     email: row.email,
     role: row.role,
     reviewNotificationsEnabled: row.review_notifications_enabled,
+    units: formatArray(row.units) as QuestionUnit[],
   }));
 }
 
@@ -295,14 +300,20 @@ export async function createUser(input: {
   email?: string;
   role: "admin" | "editor" | "viewer";
   reviewNotificationsEnabled?: boolean;
+  units: QuestionUnit[];
   password: string;
 }) {
+  const normalizedUnits = normalizeDistinctIds(input.units) as QuestionUnit[];
+  if (normalizedUnits.length === 0) {
+    throw new Error("יש לבחור לפחות יחידה אחת למשתמש.");
+  }
+
   await query(
     `
       INSERT INTO users (
-        id, username, display_name, email, role, review_notifications_enabled, password_hash, created_at
+        id, username, display_name, email, role, review_notifications_enabled, units, password_hash, created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
     `,
     [
       nanoid(),
@@ -311,6 +322,7 @@ export async function createUser(input: {
       input.email?.trim() || null,
       input.role,
       Boolean(input.reviewNotificationsEnabled),
+      normalizedUnits,
       bcrypt.hashSync(input.password, 10),
     ],
   );
@@ -358,8 +370,14 @@ export async function updateUser(input: {
   email?: string;
   role: "admin" | "editor" | "viewer";
   reviewNotificationsEnabled?: boolean;
+  units: QuestionUnit[];
   password?: string;
 }) {
+  const normalizedUnits = normalizeDistinctIds(input.units) as QuestionUnit[];
+  if (normalizedUnits.length === 0) {
+    throw new Error("יש לבחור לפחות יחידה אחת למשתמש.");
+  }
+
   if (input.password?.trim()) {
     await query(
       `
@@ -369,8 +387,9 @@ export async function updateUser(input: {
             email = $3,
             role = $4,
             review_notifications_enabled = $5,
-            password_hash = $6
-        WHERE id = $7
+            units = $6,
+            password_hash = $7
+        WHERE id = $8
       `,
       [
         input.username.trim().toLowerCase(),
@@ -378,6 +397,7 @@ export async function updateUser(input: {
         input.email?.trim() || null,
         input.role,
         Boolean(input.reviewNotificationsEnabled),
+        normalizedUnits,
         bcrypt.hashSync(input.password.trim(), 10),
         input.id,
       ],
@@ -392,8 +412,9 @@ export async function updateUser(input: {
           display_name = $2,
           email = $3,
           role = $4,
-          review_notifications_enabled = $5
-      WHERE id = $6
+          review_notifications_enabled = $5,
+          units = $6
+      WHERE id = $7
     `,
     [
       input.username.trim().toLowerCase(),
@@ -401,6 +422,7 @@ export async function updateUser(input: {
       input.email?.trim() || null,
       input.role,
       Boolean(input.reviewNotificationsEnabled),
+      normalizedUnits,
       input.id,
     ],
   );
@@ -414,6 +436,7 @@ export async function changeUserPassword(input: {
   const result = await query<UserRow>(
     `
       SELECT id, username, display_name, email, role, review_notifications_enabled, password_hash
+      , units
       FROM users
       WHERE id = $1
     `,
@@ -1527,21 +1550,24 @@ async function sendSystemEmail(input: {
 }
 
 export async function sendReviewNotificationEmails(testId: string) {
-  const [test, recipientsResult] = await Promise.all([
-    getTestById(testId),
-    query<{ email: string }>(`
+  const test = await getTestById(testId);
+
+  if (!test) {
+    throw new Error("המבחן לא נמצא.");
+  }
+
+  const recipientsResult = await query<{ email: string }>(
+    `
       SELECT email
       FROM users
       WHERE review_notifications_enabled = TRUE
         AND email IS NOT NULL
         AND BTRIM(email) <> ''
+        AND $1 = ANY(units)
       ORDER BY display_name
-    `),
-  ]);
-
-  if (!test) {
-    throw new Error("המבחן לא נמצא.");
-  }
+    `,
+    [test.unit],
+  );
 
   const recipients = recipientsResult.rows.map((row) => row.email.trim());
   if (recipients.length === 0) {

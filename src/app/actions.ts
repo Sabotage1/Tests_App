@@ -174,14 +174,20 @@ export async function deleteLookupAction(formData: FormData) {
 export async function saveUserAction(formData: FormData) {
   await requireAdmin();
 
-  await createUser({
-    username: formData.get("username")?.toString() ?? "",
-    displayName: formData.get("displayName")?.toString() ?? "",
-    email: formData.get("email")?.toString() ?? "",
-    role: (formData.get("role")?.toString() ?? "editor") as "admin" | "editor" | "viewer",
-    reviewNotificationsEnabled: formData.get("reviewNotificationsEnabled")?.toString() === "on",
-    password: formData.get("password")?.toString() ?? "",
-  });
+  try {
+    await createUser({
+      username: formData.get("username")?.toString() ?? "",
+      displayName: formData.get("displayName")?.toString() ?? "",
+      email: formData.get("email")?.toString() ?? "",
+      role: (formData.get("role")?.toString() ?? "editor") as "admin" | "editor" | "viewer",
+      reviewNotificationsEnabled: formData.get("reviewNotificationsEnabled")?.toString() === "on",
+      units: getMany(formData, "units") as QuestionUnit[],
+      password: formData.get("password")?.toString() ?? "",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "שמירת המשתמש נכשלה";
+    redirect(`/settings?userError=${encodeURIComponent(message)}`);
+  }
 
   revalidatePath("/settings");
   redirect("/settings");
@@ -228,15 +234,21 @@ export async function deleteAllTestsAction(formData: FormData) {
 export async function updateUserAction(formData: FormData) {
   await requireAdmin();
 
-  await updateUser({
-    id: formData.get("id")?.toString() ?? "",
-    username: formData.get("username")?.toString() ?? "",
-    displayName: formData.get("displayName")?.toString() ?? "",
-    email: formData.get("email")?.toString() ?? "",
-    role: (formData.get("role")?.toString() ?? "editor") as "admin" | "editor" | "viewer",
-    reviewNotificationsEnabled: formData.get("reviewNotificationsEnabled")?.toString() === "on",
-    password: formData.get("password")?.toString() ?? "",
-  });
+  try {
+    await updateUser({
+      id: formData.get("id")?.toString() ?? "",
+      username: formData.get("username")?.toString() ?? "",
+      displayName: formData.get("displayName")?.toString() ?? "",
+      email: formData.get("email")?.toString() ?? "",
+      role: (formData.get("role")?.toString() ?? "editor") as "admin" | "editor" | "viewer",
+      reviewNotificationsEnabled: formData.get("reviewNotificationsEnabled")?.toString() === "on",
+      units: getMany(formData, "units") as QuestionUnit[],
+      password: formData.get("password")?.toString() ?? "",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "עדכון המשתמש נכשל";
+    redirect(`/settings?userError=${encodeURIComponent(message)}`);
+  }
 
   revalidatePath("/settings");
   redirect("/settings?userSaved=1");

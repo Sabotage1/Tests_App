@@ -4,7 +4,7 @@ import { cache } from "react";
 
 import { nanoid } from "nanoid";
 
-import { SESSION_COOKIE } from "@/lib/constants";
+import { SESSION_COOKIE, type QuestionUnit } from "@/lib/constants";
 import { query } from "@/lib/db";
 import type { User } from "@/lib/types";
 
@@ -17,6 +17,7 @@ type UserRow = {
   email: string | null;
   role: "admin" | "editor" | "viewer";
   review_notifications_enabled: boolean;
+  units: QuestionUnit[] | null;
 };
 
 function mapUser(row: UserRow): User {
@@ -27,13 +28,14 @@ function mapUser(row: UserRow): User {
     email: row.email,
     role: row.role,
     reviewNotificationsEnabled: row.review_notifications_enabled,
+    units: row.units ?? ["vfr", "ifr"],
   };
 }
 
 const getUserBySessionToken = cache(async (token: string): Promise<User | null> => {
   const result = await query<UserRow>(
     `
-      SELECT u.id, u.username, u.display_name, u.email, u.role, u.review_notifications_enabled
+      SELECT u.id, u.username, u.display_name, u.email, u.role, u.review_notifications_enabled, u.units
       FROM sessions s
       JOIN users u ON u.id = s.user_id
       WHERE s.token = $1 AND s.expires_at > NOW()

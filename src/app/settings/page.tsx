@@ -22,6 +22,7 @@ type SettingsPageProps = {
     passwordSaved?: string;
     passwordError?: string;
     userSaved?: string;
+    userError?: string;
     userDeleted?: string;
     userDeleteError?: string;
     testsCleared?: string;
@@ -47,7 +48,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       <div className="page-header">
         <div>
           <h2>הגדרות</h2>
-          <p>ניהול הגדרות מערכת, משתמשים, ונושאים/שלבים לפי יחידה. לעורך מותר להוסיף ולעדכן נושאים ושלבים.</p>
+          <p>ניהול הגדרות מערכת, משתמשים, ונושאים/שלבים לפי יחידה. לאחראית הדרכה מותר להוסיף ולעדכן נושאים ושלבים.</p>
         </div>
       </div>
 
@@ -71,6 +72,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       {params.passwordSaved ? <div className="alert">הסיסמה עודכנה בהצלחה.</div> : null}
       {params.passwordError ? <div className="alert">עדכון הסיסמה נכשל. בדוק את הסיסמה הנוכחית ואת האימות.</div> : null}
       {params.userSaved ? <div className="alert">פרטי המשתמש נשמרו.</div> : null}
+      {params.userError ? <div className="alert">{params.userError}</div> : null}
       {params.userDeleted ? <div className="alert">המשתמש נמחק מהמערכת.</div> : null}
       {params.userDeleteError ? <div className="alert">{params.userDeleteError}</div> : null}
       {params.testsCleared ? <div className="alert">כל המבחנים נמחקו מהמערכת.</div> : null}
@@ -239,7 +241,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         <div className="grid grid-2">
           <div className="card">
             <h3>משתמשים קיימים</h3>
-            <p className="muted">התראות על מבחנים חדשים לבדיקה יישלחו רק למשתמשים שמסומנים כאן ושיש להם כתובת מייל.</p>
+            <p className="muted">התראות על מבחנים חדשים לבדיקה יישלחו רק למשתמשים שמסומנים כאן, שיש להם כתובת מייל, ושהיחידה של המבחן משויכת אליהם.</p>
             <div className="stack">
               {users.map((item) => (
                 <form key={item.id} action={updateUserAction} className="question-block">
@@ -260,7 +262,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                     <label>
                       תפקיד
                       <select name="role" defaultValue={item.role}>
-                        <option value="editor">עורך</option>
+                        <option value="editor">אחראית הדרכה</option>
                         <option value="admin">אדמין</option>
                         <option value="viewer">צופה</option>
                       </select>
@@ -277,6 +279,19 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                       />
                       שלח התראות
                     </label>
+                  </div>
+                  <div className="stack">
+                    <strong>שיוך יחידות</strong>
+                    <div className="checkbox-grid">
+                      <label className="checkbox-card">
+                        <input name="units" type="checkbox" value="vfr" defaultChecked={item.units.includes("vfr")} />
+                        {QUESTION_UNIT_LABELS.vfr}
+                      </label>
+                      <label className="checkbox-card">
+                        <input name="units" type="checkbox" value="ifr" defaultChecked={item.units.includes("ifr")} />
+                        {QUESTION_UNIT_LABELS.ifr}
+                      </label>
+                    </div>
                   </div>
                   <div className="button-row">
                     <SubmitButton className="button button-secondary" pendingLabel="שומר משתמש...">
@@ -315,7 +330,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   <label>
                     תפקיד
                     <select name="role" defaultValue="editor">
-                      <option value="editor">עורך</option>
+                      <option value="editor">אחראית הדרכה</option>
                       <option value="admin">אדמין</option>
                       <option value="viewer">צופה</option>
                     </select>
@@ -328,6 +343,19 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                     <input name="reviewNotificationsEnabled" type="checkbox" />
                     שלח התראות
                   </label>
+                </div>
+                <div className="stack">
+                  <strong>שיוך יחידות</strong>
+                  <div className="checkbox-grid">
+                    <label className="checkbox-card">
+                      <input name="units" type="checkbox" value="vfr" defaultChecked />
+                      {QUESTION_UNIT_LABELS.vfr}
+                    </label>
+                    <label className="checkbox-card">
+                      <input name="units" type="checkbox" value="ifr" defaultChecked />
+                      {QUESTION_UNIT_LABELS.ifr}
+                    </label>
+                  </div>
                 </div>
                 <SubmitButton pendingLabel="מוסיף משתמש...">
                   הוספת משתמש

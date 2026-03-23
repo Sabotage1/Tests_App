@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 
 const ROLE_LABELS = {
   admin: "אדמין",
-  editor: "עורך",
+  editor: "אחראית הדרכה",
   viewer: "צופה",
 } as const;
 
