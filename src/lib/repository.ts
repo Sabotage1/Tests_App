@@ -2,7 +2,16 @@ import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import type { PoolClient, QueryResultRow } from "pg";
 
-import { APP_NAME, DEFAULT_BONUS_QUESTION_POINTS, DEFAULT_DURATION_MINUTES, MISSING_ANSWER_TEXT, type QuestionUnit } from "@/lib/constants";
+import {
+  APP_NAME,
+  DASHBOARD_CHART_METRICS,
+  DEFAULT_BONUS_QUESTION_POINTS,
+  DEFAULT_DASHBOARD_CHART_METRICS,
+  DEFAULT_DURATION_MINUTES,
+  MISSING_ANSWER_TEXT,
+  type DashboardChartMetric,
+  type QuestionUnit,
+} from "@/lib/constants";
 import { query, withTransaction } from "@/lib/db";
 import type { DashboardStats, Option, QuestionRow, TestBuilderQuestion, TestDetails, TestListItem, User } from "@/lib/types";
 
@@ -52,6 +61,20 @@ function normalizeSourceReference(value: string | null | undefined) {
 
 function isMissingDuration(value: number | undefined) {
   return value === undefined || Number.isNaN(value);
+}
+
+function sanitizeDashboardChartMetrics(values: string[] | null | undefined) {
+  const normalized = Array.from(
+    new Set(
+      (values ?? [])
+        .map((value) => value.trim())
+        .filter((value): value is DashboardChartMetric =>
+          DASHBOARD_CHART_METRICS.includes(value as DashboardChartMetric),
+        ),
+    ),
+  );
+
+  return normalized.length > 0 ? normalized : [...DEFAULT_DASHBOARD_CHART_METRICS];
 }
 
 function hasExpectedAnswer(answer: string) {
@@ -219,6 +242,15 @@ export async function getBonusQuestionPoints() {
   return Number.isNaN(parsed) ? DEFAULT_BONUS_QUESTION_POINTS : parsed;
 }
 
+export async function getDashboardChartMetrics() {
+  const result = await query<{ value: string }>(
+    "SELECT value FROM app_settings WHERE key = $1",
+    ["dashboard_chart_metrics"],
+  );
+
+  return sanitizeDashboardChartMetrics(result.rows[0]?.value?.split(","));
+}
+
 export async function setDefaultTestDurationMinutes(durationMinutes: number) {
   await query(
     `
@@ -240,6 +272,20 @@ export async function setBonusQuestionPoints(points: number) {
       DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
     `,
     ["bonus_question_points", String(points)],
+  );
+}
+
+export async function setDashboardChartMetrics(metrics: DashboardChartMetric[]) {
+  const safeMetrics = sanitizeDashboardChartMetrics(metrics);
+
+  await query(
+    `
+      INSERT INTO app_settings (key, value, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `,
+    ["dashboard_chart_metrics", safeMetrics.join(",")],
   );
 }
 

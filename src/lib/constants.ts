@@ -53,6 +53,47 @@ export const QUESTION_UNIT_LABELS = {
   ifr: 'יחידת מכ"ם IFR',
 } as const;
 
+export const DASHBOARD_CHART_METRICS = [
+  "generated",
+  "sent",
+  "completed",
+  "graded",
+  "failed",
+] as const;
+
+export const DEFAULT_DASHBOARD_CHART_METRICS = [
+  "generated",
+  "sent",
+  "completed",
+  "graded",
+  "failed",
+] as const;
+
+export const DASHBOARD_CHART_METRIC_LABELS = {
+  generated: "מבחנים שנוצרו",
+  sent: "מבחנים שנשלחו",
+  completed: "מבחנים שהוגשו",
+  graded: "מבחנים שנבדקו",
+  failed: "מבחנים שנכשלו",
+} as const;
+
+export const DASHBOARD_CHART_METRIC_DESCRIPTIONS = {
+  generated: "כל המבחנים שנוצרו במערכת ועדיין לא הוגשו.",
+  sent: "מבחנים שנשלחו לתלמידים.",
+  completed: "מבחנים שהוגשו ומחכים לבדיקה.",
+  graded: "מבחנים שנבדקו וקיבלו ציון.",
+  failed: "מבחנים שנבדקו עם ציון נמוך מ-60.",
+} as const;
+
+export const DASHBOARD_CHART_METRIC_COLORS = {
+  generated: "#1677c7",
+  sent: "#35a3d8",
+  completed: "#29a96b",
+  graded: "#3456d1",
+  failed: "#e26d6d",
+} as const;
+
 export type TestStatus = (typeof TEST_STATUSES)[number];
 export type UserRole = (typeof USER_ROLES)[number];
 export type QuestionUnit = (typeof QUESTION_UNITS)[number];
+export type DashboardChartMetric = (typeof DASHBOARD_CHART_METRICS)[number];

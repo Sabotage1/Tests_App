@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 
 import { clearSession, createSession, requireAdmin, requireEditor, requireUser } from "@/lib/auth";
 import { gradeTestWithAi } from "@/lib/ai-grading";
-import type { QuestionUnit } from "@/lib/constants";
+import { DASHBOARD_CHART_METRICS, type DashboardChartMetric, type QuestionUnit } from "@/lib/constants";
 import {
   archiveQuestion,
   authenticateUser,
@@ -26,6 +26,7 @@ import {
   sendReviewNotificationEmails,
   sendTestInvitationEmail,
   setBonusQuestionPoints,
+  setDashboardChartMetrics,
   setDefaultTestDurationMinutes,
   startTestByToken,
   submitTestByToken,
@@ -304,6 +305,23 @@ export async function saveBonusQuestionPointsAction(formData: FormData) {
   revalidatePath("/tests/new/review");
   revalidatePath("/tests/graded");
   redirect("/settings?bonusSaved=1");
+}
+
+export async function saveDashboardChartMetricsAction(formData: FormData) {
+  await requireAdmin();
+
+  const metrics = getMany(formData, "dashboardMetrics").filter((metric): metric is DashboardChartMetric =>
+    DASHBOARD_CHART_METRICS.includes(metric as DashboardChartMetric),
+  );
+
+  if (metrics.length === 0) {
+    redirect("/settings?dashboardChartError=1");
+  }
+
+  await setDashboardChartMetrics(metrics);
+  revalidatePath("/settings");
+  revalidatePath("/dashboard");
+  redirect("/settings?dashboardChartSaved=1");
 }
 
 export async function createTestAction(formData: FormData) {

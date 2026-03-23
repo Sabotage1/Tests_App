@@ -4,6 +4,7 @@ import {
   deleteLookupAction,
   deleteUserAction,
   saveBonusQuestionPointsAction,
+  saveDashboardChartMetricsAction,
   saveDefaultDurationAction,
   saveLookupAction,
   saveUserAction,
@@ -11,14 +12,30 @@ import {
 } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
-import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
-import { getBonusQuestionPoints, getDefaultTestDurationMinutes, getStages, getSubjects, getUsers } from "@/lib/repository";
+import {
+  DASHBOARD_CHART_METRIC_COLORS,
+  DASHBOARD_CHART_METRIC_DESCRIPTIONS,
+  DASHBOARD_CHART_METRIC_LABELS,
+  DASHBOARD_CHART_METRICS,
+  QUESTION_UNIT_LABELS,
+  type QuestionUnit,
+} from "@/lib/constants";
+import {
+  getBonusQuestionPoints,
+  getDashboardChartMetrics,
+  getDefaultTestDurationMinutes,
+  getStages,
+  getSubjects,
+  getUsers,
+} from "@/lib/repository";
 
 type SettingsPageProps = {
   searchParams: Promise<{
     unit?: string;
     durationSaved?: string;
     bonusSaved?: string;
+    dashboardChartSaved?: string;
+    dashboardChartError?: string;
     passwordSaved?: string;
     passwordError?: string;
     userSaved?: string;
@@ -35,12 +52,13 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   const user = await requireUser();
   const params = await searchParams;
   const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
-  const [subjects, stages, users, defaultDurationMinutes, bonusQuestionPoints] = await Promise.all([
+  const [subjects, stages, users, defaultDurationMinutes, bonusQuestionPoints, dashboardChartMetrics] = await Promise.all([
     getSubjects(selectedUnit),
     getStages(selectedUnit),
     getUsers(),
     getDefaultTestDurationMinutes(),
     getBonusQuestionPoints(),
+    getDashboardChartMetrics(),
   ]);
 
   return (
@@ -69,6 +87,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
       {params.durationSaved ? <div className="alert">ברירת המחדל למשך מבחן נשמרה.</div> : null}
       {params.bonusSaved ? <div className="alert">שווי שאלת הבונוס נשמר.</div> : null}
+      {params.dashboardChartSaved ? <div className="alert">הגדרות התרשים בלוח הבקרה נשמרו.</div> : null}
+      {params.dashboardChartError ? <div className="alert">יש לבחור לפחות מדד אחד להצגה בתרשים.</div> : null}
       {params.passwordSaved ? <div className="alert">הסיסמה עודכנה בהצלחה.</div> : null}
       {params.passwordError ? <div className="alert">עדכון הסיסמה נכשל. בדוק את הסיסמה הנוכחית ואת האימות.</div> : null}
       {params.userSaved ? <div className="alert">פרטי המשתמש נשמרו.</div> : null}
@@ -101,26 +121,59 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       </div>
 
       {user.role === "admin" ? (
-        <div className="card">
-          <h3>שווי שאלת בונוס</h3>
-          <form action={saveBonusQuestionPointsAction}>
-            <div className="grid grid-2">
-              <label>
-                נקודות לכל שאלת בונוס
-                <input
-                  name="bonusQuestionPoints"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  defaultValue={bonusQuestionPoints}
-                />
-              </label>
-            </div>
-            <p className="muted">הנקודות האלה מתווספות מעל 100 ומחוץ לחישוב הרגיל של שאלות המבחן.</p>
-            <SubmitButton pendingLabel="שומר נקודות בונוס...">
-              שמירת שווי שאלת בונוס
-            </SubmitButton>
-          </form>
+        <div className="grid grid-2">
+          <div className="card">
+            <h3>שווי שאלת בונוס</h3>
+            <form action={saveBonusQuestionPointsAction}>
+              <div className="grid grid-2">
+                <label>
+                  נקודות לכל שאלת בונוס
+                  <input
+                    name="bonusQuestionPoints"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    defaultValue={bonusQuestionPoints}
+                  />
+                </label>
+              </div>
+              <p className="muted">הנקודות האלה מתווספות מעל 100 ומחוץ לחישוב הרגיל של שאלות המבחן.</p>
+              <SubmitButton pendingLabel="שומר נקודות בונוס...">
+                שמירת שווי שאלת בונוס
+              </SubmitButton>
+            </form>
+          </div>
+
+          <div className="card">
+            <h3>תרשים לוח בקרה</h3>
+            <form action={saveDashboardChartMetricsAction}>
+              <p className="muted">בחר אילו רובריקות של מבחנים יוצגו בתרשים העוגה בדף לוח הבקרה.</p>
+              <div className="checkbox-grid">
+                {DASHBOARD_CHART_METRICS.map((metric) => (
+                  <label key={metric} className="checkbox-card dashboard-metric-option">
+                    <input
+                      name="dashboardMetrics"
+                      type="checkbox"
+                      value={metric}
+                      defaultChecked={dashboardChartMetrics.includes(metric)}
+                    />
+                    <span
+                      className="dashboard-metric-swatch"
+                      style={{ backgroundColor: DASHBOARD_CHART_METRIC_COLORS[metric] }}
+                      aria-hidden="true"
+                    />
+                    <span className="dashboard-metric-option-body">
+                      <strong>{DASHBOARD_CHART_METRIC_LABELS[metric]}</strong>
+                      <small>{DASHBOARD_CHART_METRIC_DESCRIPTIONS[metric]}</small>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <SubmitButton pendingLabel="שומר הגדרות תרשים...">
+                שמירת נתוני התרשים
+              </SubmitButton>
+            </form>
+          </div>
         </div>
       ) : null}
 
