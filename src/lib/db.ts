@@ -95,6 +95,7 @@ async function createSchema(client: PoolClient) {
     CREATE TABLE IF NOT EXISTS subjects (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
+      unit TEXT NOT NULL DEFAULT 'vfr',
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
     );
@@ -102,6 +103,7 @@ async function createSchema(client: PoolClient) {
     CREATE TABLE IF NOT EXISTS stages (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
+      unit TEXT NOT NULL DEFAULT 'vfr',
       created_at TIMESTAMPTZ NOT NULL,
       updated_at TIMESTAMPTZ NOT NULL
     );
@@ -180,6 +182,8 @@ async function createSchema(client: PoolClient) {
     ALTER TABLE tests ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS review_notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE test_questions ADD COLUMN IF NOT EXISTS is_bonus BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE subjects ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
+    ALTER TABLE stages ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
   `);
 
   await client.query(`
@@ -190,6 +194,35 @@ async function createSchema(client: PoolClient) {
     UPDATE tests
     SET unit = 'vfr'
     WHERE unit IS NULL OR unit = '';
+
+    UPDATE subjects
+    SET unit = 'vfr'
+    WHERE unit IS NULL OR unit = '';
+
+    UPDATE stages
+    SET unit = 'vfr'
+    WHERE unit IS NULL OR unit = '';
+  `);
+
+  await client.query(`
+    ALTER TABLE subjects DROP CONSTRAINT IF EXISTS subjects_name_key;
+    ALTER TABLE stages DROP CONSTRAINT IF EXISTS stages_name_key;
+
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'subjects_name_unit_key'
+      ) THEN
+        ALTER TABLE subjects ADD CONSTRAINT subjects_name_unit_key UNIQUE (name, unit);
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'stages_name_unit_key'
+      ) THEN
+        ALTER TABLE stages ADD CONSTRAINT stages_name_unit_key UNIQUE (name, unit);
+      END IF;
+    END
+    $$;
   `);
 }
 
@@ -227,13 +260,13 @@ async function seedUsers(client: PoolClient) {
 async function seedLookupTable(client: PoolClient, table: "subjects" | "stages", values: string[]) {
   const now = new Date();
   const insertQuery = `
-    INSERT INTO ${table} (id, name, created_at, updated_at)
-    VALUES ($1, $2, $3, $4)
-    ON CONFLICT (name) DO NOTHING
+    INSERT INTO ${table} (id, name, unit, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (name, unit) DO NOTHING
   `;
 
   for (const value of values) {
-    await client.query(insertQuery, [nanoid(), value, now, now]);
+    await client.query(insertQuery, [nanoid(), value, "vfr", now, now]);
   }
 }
 

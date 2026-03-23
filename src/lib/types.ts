@@ -12,6 +12,7 @@ export type User = {
 export type Option = {
   label: string;
   value: string;
+  unit?: QuestionUnit;
 };
 
 export type QuestionRow = {

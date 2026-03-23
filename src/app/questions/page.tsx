@@ -23,13 +23,13 @@ function getQuestionNumber(sourceReference: string | null) {
 export default async function QuestionsPage({ searchParams }: QuestionsPageProps) {
   const user = await requireUser();
   const params = await searchParams;
+  const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
   const [questions, subjects, stages, editingQuestion] = await Promise.all([
     getQuestions(),
-    getSubjects(),
-    getStages(),
+    getSubjects(selectedUnit),
+    getStages(selectedUnit),
     params.edit ? getQuestionById(params.edit) : Promise.resolve(null),
   ]);
-  const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
   const displayedQuestions = questions.filter((question) => question.unit === selectedUnit);
   const nextQuestionReference = `שאלה ${
     displayedQuestions.reduce((maxNumber, question) => Math.max(maxNumber, getQuestionNumber(question.sourceReference) ?? 0), 0) + 1

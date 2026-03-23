@@ -47,6 +47,12 @@ function getUnitRedirectSuffix(formData: FormData) {
   return unit === "ifr" ? "?unit=ifr" : "?unit=vfr";
 }
 
+function getLookupSettingsRedirect(formData: FormData, extra?: string): RedirectPath {
+  const unit = formData.get("lookupUnit")?.toString() === "ifr" ? "ifr" : "vfr";
+  const suffix = extra ? `&${extra}` : "";
+  return `/settings?unit=${unit}${suffix}` as RedirectPath;
+}
+
 function appendMany(params: URLSearchParams, name: string, values: string[]) {
   for (const value of values) {
     params.append(name, value);
@@ -130,22 +136,23 @@ export async function saveLookupAction(formData: FormData) {
   const type = formData.get("type")?.toString();
   const name = formData.get("name")?.toString() ?? "";
   const id = formData.get("id")?.toString() || null;
+  const lookupUnit = (formData.get("lookupUnit")?.toString() === "ifr" ? "ifr" : "vfr") as QuestionUnit;
 
   if (type !== "subjects" && type !== "stages") {
     redirect("/settings");
   }
 
   try {
-    await upsertLookup(type, id, name);
+    await upsertLookup(type, id, name, lookupUnit);
   } catch (error) {
     const message = error instanceof Error ? error.message : "שמירת הערך נכשלה";
-    redirect(`/settings?lookupError=${encodeURIComponent(message)}`);
+    redirect(getLookupSettingsRedirect(formData, `lookupError=${encodeURIComponent(message)}`));
   }
 
   revalidatePath("/settings");
   revalidatePath("/questions");
   revalidatePath("/tests/new");
-  redirect("/settings");
+  redirect(getLookupSettingsRedirect(formData));
 }
 
 export async function deleteLookupAction(formData: FormData) {
@@ -161,7 +168,7 @@ export async function deleteLookupAction(formData: FormData) {
   revalidatePath("/settings");
   revalidatePath("/questions");
   revalidatePath("/tests/new");
-  redirect("/settings");
+  redirect(getLookupSettingsRedirect(formData));
 }
 
 export async function saveUserAction(formData: FormData) {

@@ -11,10 +11,12 @@ import {
 } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
+import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
 import { getBonusQuestionPoints, getDefaultTestDurationMinutes, getStages, getSubjects, getUsers } from "@/lib/repository";
 
 type SettingsPageProps = {
   searchParams: Promise<{
+    unit?: string;
     durationSaved?: string;
     bonusSaved?: string;
     passwordSaved?: string;
@@ -31,9 +33,10 @@ type SettingsPageProps = {
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const user = await requireUser();
   const params = await searchParams;
+  const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
   const [subjects, stages, users, defaultDurationMinutes, bonusQuestionPoints] = await Promise.all([
-    getSubjects(),
-    getStages(),
+    getSubjects(selectedUnit),
+    getStages(selectedUnit),
     getUsers(),
     getDefaultTestDurationMinutes(),
     getBonusQuestionPoints(),
@@ -44,8 +47,23 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       <div className="page-header">
         <div>
           <h2>הגדרות</h2>
-          <p>ניהול נושאים, שלבים ומשתמשים. לעורך מותר להוסיף ולעדכן נושאים ושלבים.</p>
+          <p>ניהול הגדרות מערכת, משתמשים, ונושאים/שלבים לפי יחידה. לעורך מותר להוסיף ולעדכן נושאים ושלבים.</p>
         </div>
+      </div>
+
+      <div className="button-row">
+        <a
+          className={selectedUnit === "vfr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
+          href="/settings?unit=vfr"
+        >
+          {QUESTION_UNIT_LABELS.vfr}
+        </a>
+        <a
+          className={selectedUnit === "ifr" ? "button unit-toggle-active" : "button unit-toggle-idle"}
+          href="/settings?unit=ifr"
+        >
+          {QUESTION_UNIT_LABELS.ifr}
+        </a>
       </div>
 
       {params.durationSaved ? <div className="alert">ברירת המחדל למשך מבחן נשמרה.</div> : null}
@@ -129,12 +147,25 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
       <div className="grid grid-2">
         <div className="card">
-          <h3>נושאים</h3>
+          <h3>נושאים עבור {QUESTION_UNIT_LABELS[selectedUnit]}</h3>
+          <p className="muted">הנושאים שמופיעים כאן זמינים רק לשאלות ולמבחנים של היחידה שנבחרה למעלה.</p>
           <div className="stack">
+            <form action={saveLookupAction} className="question-block">
+              <input type="hidden" name="type" value="subjects" />
+              <input type="hidden" name="lookupUnit" value={selectedUnit} />
+              <label>
+                הוספת נושא חדש
+                <input name="name" placeholder="נושא חדש" required />
+              </label>
+              <SubmitButton pendingLabel="מוסיף נושא...">
+                הוספת נושא
+              </SubmitButton>
+            </form>
             {subjects.map((subject) => (
-              <form key={subject.value} action={saveLookupAction}>
+              <form key={subject.value} action={saveLookupAction} className="question-block">
                 <input type="hidden" name="type" value="subjects" />
                 <input type="hidden" name="id" value={subject.value} />
+                <input type="hidden" name="lookupUnit" value={selectedUnit} />
                 <label>
                   שם הנושא
                   <input name="name" defaultValue={subject.label} required />
@@ -155,26 +186,30 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 </div>
               </form>
             ))}
-            <form action={saveLookupAction}>
-              <input type="hidden" name="type" value="subjects" />
-              <label>
-                הוספת נושא
-                <input name="name" placeholder="נושא חדש" required />
-              </label>
-              <SubmitButton pendingLabel="מוסיף נושא...">
-                הוספה
-              </SubmitButton>
-            </form>
+            {subjects.length === 0 ? <div className="muted">עדיין לא הוגדרו נושאים ליחידה הזאת.</div> : null}
           </div>
         </div>
 
         <div className="card">
-          <h3>שלבים</h3>
+          <h3>שלבים עבור {QUESTION_UNIT_LABELS[selectedUnit]}</h3>
+          <p className="muted">השלבים כאן מופרדים לפי יחידה, כך שאפשר לנהל מסלולי הסמכה שונים למגדל ולמכ"ם.</p>
           <div className="stack">
+            <form action={saveLookupAction} className="question-block">
+              <input type="hidden" name="type" value="stages" />
+              <input type="hidden" name="lookupUnit" value={selectedUnit} />
+              <label>
+                הוספת שלב חדש
+                <input name="name" placeholder="שלב חדש" required />
+              </label>
+              <SubmitButton pendingLabel="מוסיף שלב...">
+                הוספת שלב
+              </SubmitButton>
+            </form>
             {stages.map((stage) => (
-              <form key={stage.value} action={saveLookupAction}>
+              <form key={stage.value} action={saveLookupAction} className="question-block">
                 <input type="hidden" name="type" value="stages" />
                 <input type="hidden" name="id" value={stage.value} />
+                <input type="hidden" name="lookupUnit" value={selectedUnit} />
                 <label>
                   שם השלב
                   <input name="name" defaultValue={stage.label} required />
@@ -195,16 +230,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 </div>
               </form>
             ))}
-            <form action={saveLookupAction}>
-              <input type="hidden" name="type" value="stages" />
-              <label>
-                הוספת שלב
-                <input name="name" placeholder="שלב חדש" required />
-              </label>
-              <SubmitButton pendingLabel="מוסיף שלב...">
-                הוספה
-              </SubmitButton>
-            </form>
+            {stages.length === 0 ? <div className="muted">עדיין לא הוגדרו שלבים ליחידה הזאת.</div> : null}
           </div>
         </div>
       </div>

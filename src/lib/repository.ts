@@ -183,8 +183,16 @@ export async function authenticateUser(username: string, password: string) {
   return mapUser(row);
 }
 
-export async function getSubjects() {
-  const result = await query<Option>("SELECT id AS value, name AS label FROM subjects ORDER BY name");
+export async function getSubjects(unit?: QuestionUnit) {
+  const result = await query<Option>(
+    `
+      SELECT id AS value, name AS label, unit
+      FROM subjects
+      ${unit ? "WHERE unit = $1" : ""}
+      ORDER BY unit, name
+    `,
+    unit ? [unit] : [],
+  );
   return result.rows;
 }
 
@@ -244,8 +252,16 @@ export async function getPendingReviewCount() {
   return Number(result.rows[0]?.count ?? 0);
 }
 
-export async function getStages() {
-  const result = await query<Option>("SELECT id AS value, name AS label FROM stages ORDER BY name");
+export async function getStages(unit?: QuestionUnit) {
+  const result = await query<Option>(
+    `
+      SELECT id AS value, name AS label, unit
+      FROM stages
+      ${unit ? "WHERE unit = $1" : ""}
+      ORDER BY unit, name
+    `,
+    unit ? [unit] : [],
+  );
   return result.rows;
 }
 
@@ -419,26 +435,35 @@ export async function changeUserPassword(input: {
   ]);
 }
 
-export async function upsertLookup(type: "subjects" | "stages", id: string | null, name: string) {
+export async function upsertLookup(
+  type: "subjects" | "stages",
+  id: string | null,
+  name: string,
+  unit: QuestionUnit,
+) {
   const normalizedName = name.trim();
   const existingResult = await query<{ id: string }>(
-    `SELECT id FROM ${type} WHERE LOWER(name) = LOWER($1)`,
-    [normalizedName],
+    `SELECT id FROM ${type} WHERE LOWER(name) = LOWER($1) AND unit = $2`,
+    [normalizedName, unit],
   );
   const existing = existingResult.rows[0];
 
   if (existing && existing.id !== id) {
-    throw new Error("השם הזה כבר קיים במערכת.");
+    throw new Error("השם הזה כבר קיים ביחידה שנבחרה.");
   }
 
   if (id) {
-    await query(`UPDATE ${type} SET name = $1, updated_at = NOW() WHERE id = $2`, [normalizedName, id]);
+    await query(`UPDATE ${type} SET name = $1, unit = $2, updated_at = NOW() WHERE id = $3`, [normalizedName, unit, id]);
     return;
   }
 
   await query(
-    `INSERT INTO ${type} (id, name, created_at, updated_at) VALUES ($1, $2, NOW(), NOW()) ON CONFLICT (name) DO NOTHING`,
-    [nanoid(), normalizedName],
+    `
+      INSERT INTO ${type} (id, name, unit, created_at, updated_at)
+      VALUES ($1, $2, $3, NOW(), NOW())
+      ON CONFLICT (name, unit) DO NOTHING
+    `,
+    [nanoid(), normalizedName, unit],
   );
 }
 

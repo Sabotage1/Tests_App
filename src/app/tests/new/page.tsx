@@ -12,14 +12,14 @@ type NewTestPageProps = {
 export default async function NewTestPage({ searchParams }: NewTestPageProps) {
   await requireUser();
   const params = await searchParams;
+  const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
   const [subjects, stages, defaultDurationMinutes, bonusQuestionPoints, questions] = await Promise.all([
-    getSubjects(),
-    getStages(),
+    getSubjects(selectedUnit),
+    getStages(selectedUnit),
     getDefaultTestDurationMinutes(),
     getBonusQuestionPoints(),
     getQuestions(),
   ]);
-  const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
   const activeQuestions = questions.filter((question) => question.isActive === 1 && question.unit === selectedUnit);
 
   return (
