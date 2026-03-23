@@ -21,6 +21,7 @@ export type QuestionRow = {
   text: string;
   answer: string;
   questionType: string;
+  isBonusSource: boolean;
   unit: QuestionUnit;
   source: string;
   sourceReference: string | null;
@@ -37,6 +38,7 @@ export type TestBuilderQuestion = {
   text: string;
   answer: string;
   questionType: string;
+  isBonusSource: boolean;
   unit: QuestionUnit;
   source: string;
   sourceReference: string | null;

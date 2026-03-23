@@ -184,6 +184,7 @@ async function createSchema(client: PoolClient) {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS review_notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS units TEXT[] NOT NULL DEFAULT ARRAY['vfr', 'ifr']::TEXT[];
     ALTER TABLE test_questions ADD COLUMN IF NOT EXISTS is_bonus BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE questions ADD COLUMN IF NOT EXISTS is_bonus_source BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE subjects ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
     ALTER TABLE stages ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
   `);
@@ -192,6 +193,10 @@ async function createSchema(client: PoolClient) {
     UPDATE questions
     SET unit = 'vfr'
     WHERE unit IS NULL OR unit = '';
+
+    UPDATE questions
+    SET is_bonus_source = FALSE
+    WHERE unit <> 'ifr' AND is_bonus_source = TRUE;
 
     UPDATE tests
     SET unit = 'vfr'

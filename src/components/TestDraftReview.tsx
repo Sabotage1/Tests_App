@@ -202,7 +202,7 @@ export function TestDraftReview({
             questionsById: bonusQuestionsById,
             selectedIds: selectedBonusQuestionIds,
             setSelectedIds: setSelectedBonusQuestionIds,
-            title: 'שאלות בונוס ממאגר המכ"ם',
+            title: 'שאלות בונוס שסומנו במאגר המכ"ם',
             replacementLabel: "החלפת שאלת בונוס",
             slotPrefix: "bonus",
             isBonus: true,

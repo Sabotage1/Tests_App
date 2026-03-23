@@ -117,6 +117,15 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
               <input name="sourceReference" defaultValue={editorSourceReference} />
             </label>
             <p className="muted">מספר שאלה יכול לחזור בין יחידות שונות, אבל לא פעמיים בתוך אותה יחידה.</p>
+            <label className="checkbox-card">
+              <input
+                type="checkbox"
+                name="isBonusSource"
+                defaultChecked={editingQuestion?.isBonusSource}
+              />
+              לסמן כשאלת בונוס
+            </label>
+            <p className="muted">רק שאלות ממאגר המכ"ם שיסומנו כאן יוצגו וייבחרו במסלול שאלות הבונוס של מבחני המגדל.</p>
             <div className="stack">
               <strong>שיוך לנושאים</strong>
               <div className="checkbox-grid">
@@ -196,6 +205,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                 </div>
                 <p style={{ whiteSpace: "pre-wrap" }}>{question.text}</p>
                 <div className="pill-row">
+                  {question.isBonusSource ? <span className="pill">שאלת בונוס</span> : null}
                   {question.subjectNames.map((subject) => (
                     <span className="pill" key={subject}>
                       {subject}

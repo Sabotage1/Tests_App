@@ -91,6 +91,7 @@ export async function saveQuestionAction(formData: FormData) {
       text: formData.get("text")?.toString() ?? "",
       answer: formData.get("answer")?.toString() ?? "",
       questionType: formData.get("questionType")?.toString() ?? "open",
+      isBonusSource: formData.get("isBonusSource")?.toString() === "on",
       unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
       source: formData.get("source")?.toString() ?? "הוזן ידנית",
       sourceReference: formData.get("sourceReference")?.toString() ?? null,
@@ -391,6 +392,7 @@ export async function prepareTestDraftAction(formData: FormData) {
             selectionMode: "random",
             unit: "ifr",
             questionCount: bonusQuestionCount,
+            bonusOnly: true,
             subjectIds: [],
             stageIds: [],
           })

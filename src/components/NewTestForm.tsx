@@ -96,7 +96,7 @@ export function NewTestForm({
         )}
         {canUseBonusQuestions ? (
           <p className="muted">
-            שאלות הבונוס זמינות רק למבחני יחידת המגדל, נשלפות ממאגר יחידת המכ"ם, וכל אחת שווה כרגע {bonusQuestionPoints} נקודות מעל 100.
+            שאלות הבונוס זמינות רק למבחני יחידת המגדל, נשלפות רק משאלות שסומנו כשאלות בונוס במאגר יחידת המכ"ם, וכל אחת שווה כרגע {bonusQuestionPoints} נקודות מעל 100.
           </p>
         ) : null}
       </div>

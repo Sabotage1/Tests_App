@@ -62,6 +62,7 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
         selectionMode: "random",
         unit: "ifr",
         questionCount: bonusQuestionCount,
+        bonusOnly: true,
         subjectIds: [],
         stageIds: [],
         selectedQuestionIds: bonusSelectedQuestionIds.length > 0 ? bonusSelectedQuestionIds : undefined,

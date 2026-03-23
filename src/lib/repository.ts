@@ -93,6 +93,7 @@ function mapTestBuilderQuestion(row: QuestionSelectionRow): TestBuilderQuestion 
     text: row.text,
     answer: row.answer,
     questionType: row.question_type,
+    isBonusSource: row.is_bonus_source,
     unit: row.unit,
     source: row.source,
     sourceReference: row.source_reference,
@@ -110,6 +111,7 @@ type QuestionSelectionRow = {
   text: string;
   answer: string;
   question_type: string;
+  is_bonus_source: boolean;
   unit: QuestionUnit;
   source: string;
   source_reference: string | null;
@@ -543,6 +545,7 @@ export async function deleteLookup(type: "subjects" | "stages", id: string) {
 async function getQuestionPoolsForTestBuilder(input: {
   selectionMode: "random" | "filtered" | "manual";
   unit: QuestionUnit;
+  bonusOnly?: boolean;
   onlyAnswered?: boolean;
   subjectIds: string[];
   stageIds: string[];
@@ -554,6 +557,7 @@ async function getQuestionPoolsForTestBuilder(input: {
         q.text,
         q.answer,
         q.question_type,
+        q.is_bonus_source,
         q.unit,
         q.source,
         q.source_reference,
@@ -576,6 +580,10 @@ async function getQuestionPoolsForTestBuilder(input: {
   const basePool = result.rows;
 
   let eligiblePool = input.onlyAnswered ? basePool.filter((row) => hasExpectedAnswer(row.answer)) : basePool;
+
+  if (input.bonusOnly) {
+    eligiblePool = eligiblePool.filter((row) => row.is_bonus_source);
+  }
 
   if (input.selectionMode === "filtered") {
     eligiblePool = eligiblePool.filter((row) => {
@@ -624,6 +632,7 @@ export async function getTestDraftQuestions(input: {
   selectionMode: "random" | "filtered" | "manual";
   unit: QuestionUnit;
   questionCount: number;
+  bonusOnly?: boolean;
   onlyAnswered?: boolean;
   subjectIds: string[];
   stageIds: string[];
@@ -634,10 +643,15 @@ export async function getTestDraftQuestions(input: {
   let selectedPool: QuestionSelectionRow[] = [];
 
   if (explicitIds.length > 0) {
+    const explicitSelectionPool =
+      input.selectionMode === "manual" && !input.bonusOnly ? basePool : eligiblePool;
+
     selectedPool = resolveExactQuestionSelection(
-      input.selectionMode === "manual" ? basePool : eligiblePool,
+      explicitSelectionPool,
       explicitIds,
-      "חלק מהשאלות שנבחרו אינן זמינות יותר לפי הסינון הנוכחי. יש לרענן את המסך ולנסות שוב.",
+      input.bonusOnly
+        ? "חלק משאלות הבונוס שנבחרו כבר לא זמינות יותר. יש לרענן את המסך ולנסות שוב."
+        : "חלק מהשאלות שנבחרו אינן זמינות יותר לפי הסינון הנוכחי. יש לרענן את המסך ולנסות שוב.",
     );
 
     if (input.selectionMode === "manual" && input.onlyAnswered && selectedPool.some((row) => !hasExpectedAnswer(row.answer))) {
@@ -655,7 +669,11 @@ export async function getTestDraftQuestions(input: {
     selectedPool = shuffled.slice(0, requiredCount);
 
     if (selectedPool.length < requiredCount) {
-      throw new Error("אין מספיק שאלות פעילות לבניית המבחן לפי הסינון שבחרת.");
+      throw new Error(
+        input.bonusOnly
+          ? 'אין מספיק שאלות בונוס פעילות שסומנו במאגר המכ"ם.'
+          : "אין מספיק שאלות פעילות לבניית המבחן לפי הסינון שבחרת.",
+      );
     }
   }
 
@@ -673,6 +691,7 @@ export async function getQuestionById(id: string) {
         q.text,
         q.answer,
         q.question_type AS "questionType",
+        q.is_bonus_source AS "isBonusSource",
         q.unit,
         q.source,
         q.source_reference AS "sourceReference",
@@ -703,6 +722,7 @@ export async function getQuestions() {
       q.text,
       q.answer,
       q.question_type AS "questionType",
+      q.is_bonus_source AS "isBonusSource",
       q.unit,
       q.source,
       q.source_reference AS "sourceReference",
@@ -733,6 +753,7 @@ export async function upsertQuestion(input: {
   text: string;
   answer: string;
   questionType: string;
+  isBonusSource?: boolean;
   unit: QuestionUnit;
   source: string;
   sourceReference?: string | null;
@@ -740,6 +761,7 @@ export async function upsertQuestion(input: {
   stageIds: string[];
 }) {
   const questionId = input.id ?? nanoid();
+  const isBonusSource = input.unit === "ifr" && Boolean(input.isBonusSource);
 
   await withTransaction(async (client) => {
     const normalizedReference = normalizeSourceReference(input.sourceReference);
@@ -788,16 +810,18 @@ export async function upsertQuestion(input: {
           SET text = $1,
               answer = $2,
               question_type = $3,
-              unit = $4,
-              source = $5,
-              source_reference = $6,
+              is_bonus_source = $4,
+              unit = $5,
+              source = $6,
+              source_reference = $7,
               updated_at = NOW()
-          WHERE id = $7
+          WHERE id = $8
         `,
         [
           input.text.trim(),
           input.answer.trim() || MISSING_ANSWER_TEXT,
           input.questionType,
+          isBonusSource,
           input.unit,
           input.source.trim(),
           referenceToSave,
@@ -808,15 +832,16 @@ export async function upsertQuestion(input: {
       await client.query(
         `
           INSERT INTO questions (
-            id, text, answer, question_type, unit, source, source_reference, is_active, created_at, updated_at
+            id, text, answer, question_type, is_bonus_source, unit, source, source_reference, is_active, created_at, updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, NOW(), NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, NOW(), NOW())
         `,
         [
           questionId,
           input.text.trim(),
           input.answer.trim() || MISSING_ANSWER_TEXT,
           input.questionType,
+          isBonusSource,
           input.unit,
           input.source.trim(),
           referenceToSave,
@@ -971,6 +996,7 @@ export async function createTest(input: {
           selectionMode: "random",
           unit: "ifr",
           questionCount: bonusQuestionCount,
+          bonusOnly: true,
           subjectIds: [],
           stageIds: [],
           selectedQuestionIds: input.bonusSelectedQuestionIds,
