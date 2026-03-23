@@ -10,6 +10,16 @@ type QuestionsPageProps = {
   searchParams: Promise<{ edit?: string; unit?: string; error?: string }>;
 };
 
+function getQuestionNumber(sourceReference: string | null) {
+  const digits = sourceReference?.match(/\d+/g)?.join("") ?? "";
+  if (!digits) {
+    return null;
+  }
+
+  const parsed = Number(digits);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
 export default async function QuestionsPage({ searchParams }: QuestionsPageProps) {
   const user = await requireUser();
   const params = await searchParams;
@@ -21,7 +31,16 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
   ]);
   const selectedUnit: QuestionUnit = params.unit === "ifr" ? "ifr" : "vfr";
   const displayedQuestions = questions.filter((question) => question.unit === selectedUnit);
+  const nextQuestionReference = `שאלה ${
+    displayedQuestions.reduce((maxNumber, question) => Math.max(maxNumber, getQuestionNumber(question.sourceReference) ?? 0), 0) + 1
+  }`;
+  const displayedQuestionLabels = new Map(
+    displayedQuestions.map((question, index) => [question.id, question.sourceReference || `שאלה ${index + 1}`]),
+  );
   const editFormUnit = editingQuestion?.unit ?? selectedUnit;
+  const editorSourceReference = editingQuestion
+    ? displayedQuestionLabels.get(editingQuestion.id) ?? editingQuestion.sourceReference ?? nextQuestionReference
+    : nextQuestionReference;
 
   return (
     <div className="stack">
@@ -44,6 +63,11 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           href="/questions?unit=ifr"
         >
           {QUESTION_UNIT_LABELS.ifr}
+        </Link>
+      </div>
+      <div className="button-row">
+        <Link className="button button-primary" href={`/questions?unit=${selectedUnit}#question-editor`} scroll>
+          הוסף שאלה חדשה
         </Link>
       </div>
       {params.error ? <div className="alert">{params.error}</div> : null}
@@ -90,7 +114,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
             </div>
             <label>
               סימוכין
-              <input name="sourceReference" defaultValue={editingQuestion?.sourceReference ?? ""} />
+              <input name="sourceReference" defaultValue={editorSourceReference} />
             </label>
             <p className="muted">מספר שאלה יכול לחזור בין יחידות שונות, אבל לא פעמיים בתוך אותה יחידה.</p>
             <div className="stack">
@@ -138,7 +162,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
               <div className="question-block" key={question.id}>
                 <div className="page-header">
                   <div>
-                    <h3>{question.sourceReference || "שאלה"}</h3>
+                    <h3>{displayedQuestionLabels.get(question.id) || "שאלה"}</h3>
                     <p>{question.source}</p>
                     <p className="muted">{QUESTION_UNIT_LABELS[question.unit]}</p>
                   </div>

@@ -646,10 +646,30 @@ export async function upsertQuestion(input: {
   stageIds: string[];
 }) {
   const questionId = input.id ?? nanoid();
-  const normalizedReference = normalizeSourceReference(input.sourceReference);
 
   await withTransaction(async (client) => {
-    if (normalizedReference) {
+    const normalizedReference = normalizeSourceReference(input.sourceReference);
+    let referenceToSave = normalizedReference;
+
+    if (!referenceToSave) {
+      const nextReferenceResult = await client.query<{ max_number: string | number | null }>(
+        `
+          SELECT COALESCE(MAX(number_value), 0)::text AS max_number
+          FROM (
+            SELECT NULLIF(regexp_replace(COALESCE(source_reference, ''), '\\D', '', 'g'), '')::INTEGER AS number_value
+            FROM questions
+            WHERE unit = $1
+              AND id <> $2
+          ) numbered
+        `,
+        [input.unit, questionId],
+      );
+
+      const nextNumber = Number(nextReferenceResult.rows[0]?.max_number ?? 0) + 1;
+      referenceToSave = `שאלה ${nextNumber}`;
+    }
+
+    if (referenceToSave) {
       const duplicateResult = await client.query<{ id: string }>(
         `
           SELECT id
@@ -659,7 +679,7 @@ export async function upsertQuestion(input: {
             AND id <> $3
           LIMIT 1
         `,
-        [input.unit, normalizedReference, questionId],
+        [input.unit, referenceToSave, questionId],
       );
 
       if (duplicateResult.rows.length > 0) {
@@ -686,7 +706,7 @@ export async function upsertQuestion(input: {
           input.questionType,
           input.unit,
           input.source.trim(),
-          normalizedReference,
+          referenceToSave,
           questionId,
         ],
       );
@@ -705,7 +725,7 @@ export async function upsertQuestion(input: {
           input.questionType,
           input.unit,
           input.source.trim(),
-          normalizedReference,
+          referenceToSave,
         ],
       );
     }
