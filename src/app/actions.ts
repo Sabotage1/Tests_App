@@ -316,6 +316,7 @@ export async function prepareTestDraftAction(formData: FormData) {
   const stageIds = getMany(formData, "stageIds");
   const onlyAnswered = formData.get("onlyAnswered")?.toString() === "on";
   const questionCount = Number(formData.get("questionCount")?.toString() ?? "0");
+  let redirectPath: RedirectPath | null = null;
 
   try {
     const draft = await getTestDraftQuestions({
@@ -348,12 +349,17 @@ export async function prepareTestDraftAction(formData: FormData) {
       "selectedQuestionIds",
       draft.selectedQuestions.map((question) => question.id),
     );
-
-    redirect(`/tests/new/review?${params.toString()}`);
+    redirectPath = `/tests/new/review?${params.toString()}` as RedirectPath;
   } catch (error) {
     const message = error instanceof Error ? error.message : "יצירת טיוטת המבחן נכשלה";
     redirect(`/tests/new?unit=${unit}&error=${encodeURIComponent(message)}`);
   }
+
+  if (!redirectPath) {
+    redirect(`/tests/new?unit=${unit}&error=${encodeURIComponent("יצירת טיוטת המבחן נכשלה")}`);
+  }
+
+  redirect(redirectPath);
 }
 
 export async function createShareLinkAction(formData: FormData) {
