@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { createTestAction } from "@/app/actions";
+import { prepareTestDraftAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
@@ -46,7 +46,7 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
       </div>
       {params.error ? <div className="alert">{params.error}</div> : null}
       <div className="card">
-        <form action={createTestAction}>
+        <form action={prepareTestDraftAction}>
           <input type="hidden" name="unit" value={selectedUnit} />
           <div className="grid grid-2">
             <label>
@@ -152,9 +152,12 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
           <p className="muted">
             אם לא יוזן זמן, יילקח ערך ברירת המחדל מהמערכת. אם יוזן 0, למבחן לא תהיה מגבלת זמן.
           </p>
+          <p className="muted">
+            במבחן אקראי או מסונן תיפתח קודם תצוגה מקדימה, שבה אפשר לעבור על השאלות ולהחליף אותן לפני שמירת המבחן.
+          </p>
 
-          <SubmitButton pendingLabel="יוצר מבחן...">
-            יצירת מבחן
+          <SubmitButton pendingLabel="מכין טיוטת מבחן...">
+            המשך לבחירת שאלות
           </SubmitButton>
         </form>
       </div>

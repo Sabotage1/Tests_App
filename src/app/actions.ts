@@ -20,6 +20,7 @@ import {
   ensureShareToken,
   gradeTest,
   getDefaultTestDurationMinutes,
+  getTestDraftQuestions,
   sendGradeEmail,
   sendReviewNotificationEmails,
   sendTestInvitationEmail,
@@ -42,6 +43,12 @@ function getMany(formData: FormData, name: string) {
 function getUnitRedirectSuffix(formData: FormData) {
   const unit = formData.get("unitFilter")?.toString();
   return unit === "ifr" ? "?unit=ifr" : "?unit=vfr";
+}
+
+function appendMany(params: URLSearchParams, name: string, values: string[]) {
+  for (const value of values) {
+    params.append(name, value);
+  }
 }
 
 type RedirectPath = Parameters<typeof redirect>[0];
@@ -69,17 +76,22 @@ export async function saveQuestionAction(formData: FormData) {
 
   const id = formData.get("id")?.toString() || null;
   const redirectSuffix = getUnitRedirectSuffix(formData);
-  await upsertQuestion({
-    id,
-    text: formData.get("text")?.toString() ?? "",
-    answer: formData.get("answer")?.toString() ?? "",
-    questionType: formData.get("questionType")?.toString() ?? "open",
-    unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
-    source: formData.get("source")?.toString() ?? "הוזן ידנית",
-    sourceReference: formData.get("sourceReference")?.toString() ?? null,
-    subjectIds: getMany(formData, "subjectIds"),
-    stageIds: getMany(formData, "stageIds"),
-  });
+  try {
+    await upsertQuestion({
+      id,
+      text: formData.get("text")?.toString() ?? "",
+      answer: formData.get("answer")?.toString() ?? "",
+      questionType: formData.get("questionType")?.toString() ?? "open",
+      unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
+      source: formData.get("source")?.toString() ?? "הוזן ידנית",
+      sourceReference: formData.get("sourceReference")?.toString() ?? null,
+      subjectIds: getMany(formData, "subjectIds"),
+      stageIds: getMany(formData, "stageIds"),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "שמירת השאלה נכשלה";
+    redirect(`/questions${redirectSuffix}&error=${encodeURIComponent(message)}`);
+  }
 
   revalidatePath("/questions");
   redirect(`/questions${redirectSuffix}`);
@@ -277,6 +289,7 @@ export async function createTestAction(formData: FormData) {
       subjectIds: getMany(formData, "subjectIds"),
       stageIds: getMany(formData, "stageIds"),
       questionIds: getMany(formData, "questionIds"),
+      selectedQuestionIds: getMany(formData, "selectedQuestionIds"),
       studentName: formData.get("studentName")?.toString() ?? "",
       studentEmail: formData.get("studentEmail")?.toString() ?? "",
     });
@@ -288,6 +301,59 @@ export async function createTestAction(formData: FormData) {
   revalidatePath("/dashboard");
   revalidatePath("/tests/library");
   redirect(`/tests/${id}`);
+}
+
+export async function prepareTestDraftAction(formData: FormData) {
+  await requireEditor();
+  const selectionMode = (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered" | "manual";
+
+  if (selectionMode === "manual") {
+    return createTestAction(formData);
+  }
+
+  const unit = (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit;
+  const subjectIds = getMany(formData, "subjectIds");
+  const stageIds = getMany(formData, "stageIds");
+  const onlyAnswered = formData.get("onlyAnswered")?.toString() === "on";
+  const questionCount = Number(formData.get("questionCount")?.toString() ?? "0");
+
+  try {
+    const draft = await getTestDraftQuestions({
+      selectionMode,
+      unit,
+      questionCount,
+      onlyAnswered,
+      subjectIds,
+      stageIds,
+    });
+
+    const params = new URLSearchParams();
+    params.set("title", formData.get("title")?.toString() ?? "");
+    params.set("selectionMode", selectionMode);
+    params.set("unit", unit);
+    params.set("questionCount", String(questionCount));
+    params.set("durationMinutes", formData.get("durationMinutes")?.toString() ?? "");
+    params.set("sentAt", formData.get("sentAt")?.toString() ?? "");
+    params.set("studentName", formData.get("studentName")?.toString() ?? "");
+    params.set("studentEmail", formData.get("studentEmail")?.toString() ?? "");
+
+    if (onlyAnswered) {
+      params.set("onlyAnswered", "1");
+    }
+
+    appendMany(params, "subjectIds", subjectIds);
+    appendMany(params, "stageIds", stageIds);
+    appendMany(
+      params,
+      "selectedQuestionIds",
+      draft.selectedQuestions.map((question) => question.id),
+    );
+
+    redirect(`/tests/new/review?${params.toString()}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "יצירת טיוטת המבחן נכשלה";
+    redirect(`/tests/new?unit=${unit}&error=${encodeURIComponent(message)}`);
+  }
 }
 
 export async function createShareLinkAction(formData: FormData) {

@@ -398,6 +398,22 @@ textarea {
   margin-top: 4px;
 }
 
+.question-review-card {
+  gap: 16px;
+}
+
+.question-review-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 90px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: #e8f1fb;
+  color: #1f4f77;
+  font-weight: 700;
+}
+
 .split {
   display: grid;
   grid-template-columns: 1fr 1fr;

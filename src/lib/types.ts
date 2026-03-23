@@ -30,6 +30,20 @@ export type QuestionRow = {
   isActive: number;
 };
 
+export type TestBuilderQuestion = {
+  id: string;
+  text: string;
+  answer: string;
+  questionType: string;
+  unit: QuestionUnit;
+  source: string;
+  sourceReference: string | null;
+  subjectIds: string[];
+  stageIds: string[];
+  subjectNames: string[];
+  stageNames: string[];
+};
+
 export type TestListItem = {
   id: string;
   title: string;

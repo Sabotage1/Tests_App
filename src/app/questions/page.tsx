@@ -7,7 +7,7 @@ import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
 import { getQuestionById, getQuestions, getStages, getSubjects } from "@/lib/repository";
 
 type QuestionsPageProps = {
-  searchParams: Promise<{ edit?: string; unit?: string }>;
+  searchParams: Promise<{ edit?: string; unit?: string; error?: string }>;
 };
 
 export default async function QuestionsPage({ searchParams }: QuestionsPageProps) {
@@ -46,6 +46,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           {QUESTION_UNIT_LABELS.ifr}
         </Link>
       </div>
+      {params.error ? <div className="alert">{params.error}</div> : null}
 
       <div className="grid grid-2">
         <div className="card" id="question-editor">
@@ -91,6 +92,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
               סימוכין
               <input name="sourceReference" defaultValue={editingQuestion?.sourceReference ?? ""} />
             </label>
+            <p className="muted">מספר שאלה יכול לחזור בין יחידות שונות, אבל לא פעמיים בתוך אותה יחידה.</p>
             <div className="stack">
               <strong>שיוך לנושאים</strong>
               <div className="checkbox-grid">

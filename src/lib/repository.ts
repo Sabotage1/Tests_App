@@ -4,7 +4,7 @@ import type { PoolClient, QueryResultRow } from "pg";
 
 import { APP_NAME, DEFAULT_DURATION_MINUTES, MISSING_ANSWER_TEXT, type QuestionUnit } from "@/lib/constants";
 import { query, withTransaction } from "@/lib/db";
-import type { DashboardStats, Option, QuestionRow, TestDetails, TestListItem, User } from "@/lib/types";
+import type { DashboardStats, Option, QuestionRow, TestBuilderQuestion, TestDetails, TestListItem, User } from "@/lib/types";
 
 type UserRow = {
   id: string;
@@ -39,11 +39,55 @@ function formatArray(values: string[] | null | undefined) {
   return values ?? [];
 }
 
+function normalizeDistinctIds(values: string[] | null | undefined) {
+  return Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
+}
+
+function normalizeSourceReference(value: string | null | undefined) {
+  const normalized = value?.trim() ?? "";
+  return normalized === "" ? null : normalized;
+}
+
 function isMissingDuration(value: number | undefined) {
   return value === undefined || Number.isNaN(value);
 }
 
+function hasExpectedAnswer(answer: string) {
+  const normalizedAnswer = answer.trim();
+  return normalizedAnswer !== "" && normalizedAnswer !== MISSING_ANSWER_TEXT;
+}
+
+function mapTestBuilderQuestion(row: QuestionSelectionRow): TestBuilderQuestion {
+  return {
+    id: row.id,
+    text: row.text,
+    answer: row.answer,
+    questionType: row.question_type,
+    unit: row.unit,
+    source: row.source,
+    sourceReference: row.source_reference,
+    subjectIds: formatArray(row.subject_ids),
+    stageIds: formatArray(row.stage_ids),
+    subjectNames: formatArray(row.subject_names),
+    stageNames: formatArray(row.stage_names),
+  };
+}
+
 type QueryFn = <T extends QueryResultRow>(text: string, values?: unknown[]) => Promise<{ rows: T[] }>;
+
+type QuestionSelectionRow = {
+  id: string;
+  text: string;
+  answer: string;
+  question_type: string;
+  unit: QuestionUnit;
+  source: string;
+  source_reference: string | null;
+  subject_ids: string[] | null;
+  stage_ids: string[] | null;
+  subject_names: string[] | null;
+  stage_names: string[] | null;
+};
 
 function escapeHtml(value: string) {
   return value
@@ -375,6 +419,131 @@ export async function deleteLookup(type: "subjects" | "stages", id: string) {
   await query(`DELETE FROM ${type} WHERE id = $1`, [id]);
 }
 
+async function getQuestionPoolsForTestBuilder(input: {
+  selectionMode: "random" | "filtered" | "manual";
+  unit: QuestionUnit;
+  onlyAnswered?: boolean;
+  subjectIds: string[];
+  stageIds: string[];
+}) {
+  const result = await query<QuestionSelectionRow>(
+    `
+      SELECT
+        q.id,
+        q.text,
+        q.answer,
+        q.question_type,
+        q.unit,
+        q.source,
+        q.source_reference,
+        COALESCE(array_remove(array_agg(DISTINCT s.id), NULL), ARRAY[]::TEXT[]) AS subject_ids,
+        COALESCE(array_remove(array_agg(DISTINCT st.id), NULL), ARRAY[]::TEXT[]) AS stage_ids,
+        COALESCE(array_remove(array_agg(DISTINCT s.name), NULL), ARRAY[]::TEXT[]) AS subject_names,
+        COALESCE(array_remove(array_agg(DISTINCT st.name), NULL), ARRAY[]::TEXT[]) AS stage_names
+      FROM questions q
+      LEFT JOIN question_subjects qs ON qs.question_id = q.id
+      LEFT JOIN subjects s ON s.id = qs.subject_id
+      LEFT JOIN question_stages qst ON qst.question_id = q.id
+      LEFT JOIN stages st ON st.id = qst.stage_id
+      WHERE q.is_active = TRUE
+        AND q.unit = $1
+      GROUP BY q.id
+    `,
+    [input.unit],
+  );
+
+  const basePool = result.rows;
+
+  let eligiblePool = input.onlyAnswered ? basePool.filter((row) => hasExpectedAnswer(row.answer)) : basePool;
+
+  if (input.selectionMode === "filtered") {
+    eligiblePool = eligiblePool.filter((row) => {
+      const subjectMatch =
+        input.subjectIds.length === 0 ||
+        input.subjectIds.some((subjectId) => formatArray(row.subject_ids).includes(subjectId));
+      const stageMatch =
+        input.stageIds.length === 0 ||
+        input.stageIds.some((stageId) => formatArray(row.stage_ids).includes(stageId));
+
+      return subjectMatch && stageMatch;
+    });
+  }
+
+  return {
+    basePool,
+    eligiblePool,
+  };
+}
+
+function resolveExactQuestionSelection(
+  pool: QuestionSelectionRow[],
+  selectedIds: string[],
+  missingMessage: string,
+) {
+  const normalizedIds = normalizeDistinctIds(selectedIds);
+  const rawIdsCount = selectedIds.map((value) => value.trim()).filter(Boolean).length;
+
+  if (normalizedIds.length !== rawIdsCount) {
+    throw new Error("לא ניתן לבחור את אותה שאלה יותר מפעם אחת באותו מבחן.");
+  }
+
+  const rowsById = new Map(pool.map((row) => [row.id, row]));
+  const selected = normalizedIds
+    .map((questionId) => rowsById.get(questionId))
+    .filter((row): row is QuestionSelectionRow => Boolean(row));
+
+  if (selected.length !== normalizedIds.length) {
+    throw new Error(missingMessage);
+  }
+
+  return selected;
+}
+
+export async function getTestDraftQuestions(input: {
+  selectionMode: "random" | "filtered" | "manual";
+  unit: QuestionUnit;
+  questionCount: number;
+  onlyAnswered?: boolean;
+  subjectIds: string[];
+  stageIds: string[];
+  selectedQuestionIds?: string[];
+}) {
+  const { basePool, eligiblePool } = await getQuestionPoolsForTestBuilder(input);
+  const explicitIds = normalizeDistinctIds(input.selectedQuestionIds);
+  let selectedPool: QuestionSelectionRow[] = [];
+
+  if (explicitIds.length > 0) {
+    selectedPool = resolveExactQuestionSelection(
+      input.selectionMode === "manual" ? basePool : eligiblePool,
+      explicitIds,
+      "חלק מהשאלות שנבחרו אינן זמינות יותר לפי הסינון הנוכחי. יש לרענן את המסך ולנסות שוב.",
+    );
+
+    if (input.selectionMode === "manual" && input.onlyAnswered && selectedPool.some((row) => !hasExpectedAnswer(row.answer))) {
+      throw new Error("בבחירה של שאלות עם תשובה צפויה בלבד, אי אפשר לבחור שאלות שחסרה להן תשובה.");
+    }
+  } else if (input.selectionMode === "manual") {
+    throw new Error("בבחירה ידנית יש לסמן לפחות שאלה אחת מהמאגָר.");
+  } else {
+    const requiredCount = Number.isNaN(input.questionCount) ? 0 : input.questionCount;
+    if (requiredCount < 1) {
+      throw new Error("יש לבחור לפחות שאלה אחת למבחן.");
+    }
+
+    const shuffled = [...eligiblePool].sort(() => Math.random() - 0.5);
+    selectedPool = shuffled.slice(0, requiredCount);
+
+    if (selectedPool.length < requiredCount) {
+      throw new Error("אין מספיק שאלות פעילות לבניית המבחן לפי הסינון שבחרת.");
+    }
+  }
+
+  return {
+    eligibleQuestions: eligiblePool.map(mapTestBuilderQuestion),
+    selectedQuestions: selectedPool.map(mapTestBuilderQuestion),
+  };
+}
+
 export async function getQuestionById(id: string) {
   const result = await query<QuestionRow>(
     `
@@ -450,8 +619,27 @@ export async function upsertQuestion(input: {
   stageIds: string[];
 }) {
   const questionId = input.id ?? nanoid();
+  const normalizedReference = normalizeSourceReference(input.sourceReference);
 
   await withTransaction(async (client) => {
+    if (normalizedReference) {
+      const duplicateResult = await client.query<{ id: string }>(
+        `
+          SELECT id
+          FROM questions
+          WHERE unit = $1
+            AND source_reference = $2
+            AND id <> $3
+          LIMIT 1
+        `,
+        [input.unit, normalizedReference, questionId],
+      );
+
+      if (duplicateResult.rows.length > 0) {
+        throw new Error("מספר השאלה הזה כבר קיים ביחידה שנבחרה.");
+      }
+    }
+
     if (input.id) {
       await client.query(
         `
@@ -471,7 +659,7 @@ export async function upsertQuestion(input: {
           input.questionType,
           input.unit,
           input.source.trim(),
-          input.sourceReference?.trim() || null,
+          normalizedReference,
           questionId,
         ],
       );
@@ -490,7 +678,7 @@ export async function upsertQuestion(input: {
           input.questionType,
           input.unit,
           input.source.trim(),
-          input.sourceReference?.trim() || null,
+          normalizedReference,
         ],
       );
     }
@@ -612,97 +800,24 @@ export async function createTest(input: {
   subjectIds: string[];
   stageIds: string[];
   questionIds: string[];
+  selectedQuestionIds?: string[];
   studentName?: string;
   studentEmail?: string;
 }) {
   const durationMinutes = isMissingDuration(input.durationMinutes)
     ? await getDefaultTestDurationMinutes()
     : input.durationMinutes!;
-
-  const result = await query<{
-    id: string;
-    text: string;
-    answer: string;
-    unit: QuestionUnit;
-    subject_ids: string[] | null;
-    stage_ids: string[] | null;
-    subject_names: string[] | null;
-    stage_names: string[] | null;
-  }>(
-    `
-      SELECT
-        q.id,
-        q.text,
-        q.answer,
-        q.unit,
-        COALESCE(array_remove(array_agg(DISTINCT s.id), NULL), ARRAY[]::TEXT[]) AS subject_ids,
-        COALESCE(array_remove(array_agg(DISTINCT st.id), NULL), ARRAY[]::TEXT[]) AS stage_ids,
-        COALESCE(array_remove(array_agg(DISTINCT s.name), NULL), ARRAY[]::TEXT[]) AS subject_names,
-        COALESCE(array_remove(array_agg(DISTINCT st.name), NULL), ARRAY[]::TEXT[]) AS stage_names
-      FROM questions q
-      LEFT JOIN question_subjects qs ON qs.question_id = q.id
-      LEFT JOIN subjects s ON s.id = qs.subject_id
-      LEFT JOIN question_stages qst ON qst.question_id = q.id
-      LEFT JOIN stages st ON st.id = qst.stage_id
-      WHERE q.is_active = TRUE
-        AND q.unit = $1
-      GROUP BY q.id
-    `,
-    [input.unit],
-  );
-
-  let pool = result.rows;
-
-  const hasExpectedAnswer = (row: { answer: string }) => {
-    const answer = row.answer.trim();
-    return answer !== "" && answer !== MISSING_ANSWER_TEXT;
-  };
-
-  let selected = pool.slice(0, 0);
-
-  if (input.selectionMode === "manual") {
-    const selectedIds = Array.from(new Set(input.questionIds));
-    if (selectedIds.length === 0) {
-      throw new Error("בבחירה ידנית יש לסמן לפחות שאלה אחת מהמאגָר.");
-    }
-
-    const rowsById = new Map(pool.map((row) => [row.id, row]));
-    selected = selectedIds
-      .map((questionId) => rowsById.get(questionId))
-      .filter((row): row is (typeof pool)[number] => Boolean(row));
-
-    if (selected.length !== selectedIds.length) {
-      throw new Error("חלק מהשאלות שסומנו אינן פעילות יותר. יש לרענן את המסך ולנסות שוב.");
-    }
-
-    if (input.onlyAnswered && selected.some((row) => !hasExpectedAnswer(row))) {
-      throw new Error("בבחירה של שאלות עם תשובה צפויה בלבד, אי אפשר לבחור שאלות שחסרה להן תשובה.");
-    }
-  } else {
-    if (input.onlyAnswered) {
-      pool = pool.filter(hasExpectedAnswer);
-    }
-
-    if (input.selectionMode === "filtered") {
-      pool = pool.filter((row) => {
-        const subjectMatch =
-          input.subjectIds.length === 0 ||
-          input.subjectIds.some((subjectId) => formatArray(row.subject_ids).includes(subjectId));
-        const stageMatch =
-          input.stageIds.length === 0 ||
-          input.stageIds.some((stageId) => formatArray(row.stage_ids).includes(stageId));
-
-        return subjectMatch && stageMatch;
-      });
-    }
-
-    const shuffled = [...pool].sort(() => Math.random() - 0.5);
-    selected = shuffled.slice(0, input.questionCount);
-
-    if (selected.length < input.questionCount) {
-      throw new Error("אין מספיק שאלות פעילות לבניית המבחן לפי הסינון שבחרת.");
-    }
-  }
+  const explicitSelection =
+    input.selectionMode === "manual" ? input.questionIds : input.selectedQuestionIds;
+  const { selectedQuestions } = await getTestDraftQuestions({
+    selectionMode: input.selectionMode,
+    unit: input.unit,
+    questionCount: input.questionCount,
+    onlyAnswered: input.onlyAnswered,
+    subjectIds: input.subjectIds,
+    stageIds: input.stageIds,
+    selectedQuestionIds: explicitSelection,
+  });
 
   const testId = nanoid();
 
@@ -721,7 +836,7 @@ export async function createTest(input: {
         input.createdBy,
         input.selectionMode,
         input.unit,
-        selected.length,
+        selectedQuestions.length,
         durationMinutes,
         input.studentName?.trim() || null,
         input.studentEmail?.trim() || null,
@@ -730,7 +845,7 @@ export async function createTest(input: {
     );
 
     let orderIndex = 1;
-    for (const question of selected) {
+    for (const question of selectedQuestions) {
       await client.query(
         `
           INSERT INTO test_questions (
@@ -745,8 +860,8 @@ export async function createTest(input: {
           orderIndex,
           question.text,
           question.answer,
-          formatArray(question.subject_names),
-          formatArray(question.stage_names),
+          question.subjectNames,
+          question.stageNames,
         ],
       );
       orderIndex += 1;
