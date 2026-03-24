@@ -371,18 +371,19 @@ textarea {
 }
 
 .question-management-grid {
-  align-items: start;
+  align-items: stretch;
 }
 
 .question-list-panel {
   display: flex;
   flex-direction: column;
+  height: 100%;
   min-height: 0;
-  max-height: calc(100vh - 240px);
   overflow: hidden;
 }
 
 .question-list-scroll {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding-inline-end: 8px;
@@ -617,6 +618,7 @@ textarea {
   }
 
   .question-list-panel {
+    height: auto;
     max-height: none;
     overflow: visible;
   }
