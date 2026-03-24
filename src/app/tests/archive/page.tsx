@@ -1,11 +1,11 @@
 import Link from "next/link";
 
-import { requireUser } from "@/lib/auth";
-import { QUESTION_UNIT_LABELS, type TestStatus } from "@/lib/constants";
+import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
+import { QUESTION_UNIT_LABELS, type QuestionUnit, type TestStatus } from "@/lib/constants";
 import { getTests } from "@/lib/repository";
 
 type ArchivePageProps = {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; unit?: string }>;
 };
 
 const STATUS_LABELS: Record<TestStatus, string> = {
@@ -24,18 +24,31 @@ function formatGrade(value: number | null) {
 }
 
 export default async function ArchiveTestsPage({ searchParams }: ArchivePageProps) {
-  await requireUser();
+  const user = await requireUser();
   const params = await searchParams;
   const tests = await getTests();
-  const archivedTests = tests.filter((test) => test.status !== "generated");
+  const selectedUnit: QuestionUnit = getSelectedUnitForUser(user, params.unit);
+  const unitOrder = getUnitOrderForUser(user);
+  const archivedTests = tests.filter((test) => test.status !== "generated" && test.unit === selectedUnit);
 
   return (
     <div className="stack">
       <div className="page-header">
         <div>
           <h2>ארכיון מבחנים</h2>
-          <p>רשימת כל המבחנים שנשלחו בעבר, עם נתוני נבחן, מועדים, ציון ופעולות להמשך טיפול.</p>
+          <p>רשימת המבחנים שנשלחו בעבר עבור היחידה שנבחרה, עם נתוני נבחן, מועדים, ציון ופעולות להמשך טיפול.</p>
         </div>
+      </div>
+      <div className="button-row">
+        {unitOrder.map((unit) => (
+          <Link
+            key={unit}
+            className={selectedUnit === unit ? "button unit-toggle-active" : "button unit-toggle-idle"}
+            href={`/tests/archive?unit=${unit}`}
+          >
+            {QUESTION_UNIT_LABELS[unit]}
+          </Link>
+        ))}
       </div>
       {params.error ? <div className="alert">{params.error}</div> : null}
 
@@ -83,7 +96,7 @@ export default async function ArchiveTestsPage({ searchParams }: ArchivePageProp
             </tbody>
           </table>
         ) : (
-          <div>אין מבחנים בארכיון כרגע.</div>
+          <div>אין מבחנים בארכיון עבור היחידה שנבחרה כרגע.</div>
         )}
       </div>
     </div>
