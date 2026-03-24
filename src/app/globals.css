@@ -371,10 +371,10 @@ textarea {
 }
 
 .question-management-grid {
-  align-items: stretch;
+  align-items: start;
 }
 
-.question-panel {
+.question-list-panel {
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -382,7 +382,7 @@ textarea {
   overflow: hidden;
 }
 
-.question-panel-scroll {
+.question-list-scroll {
   min-height: 0;
   overflow-y: auto;
   padding-inline-end: 8px;
@@ -616,12 +616,12 @@ textarea {
     grid-template-columns: 1fr;
   }
 
-  .question-panel {
+  .question-list-panel {
     max-height: none;
     overflow: visible;
   }
 
-  .question-panel-scroll {
+  .question-list-scroll {
     overflow: visible;
     padding-inline-end: 0;
   }
