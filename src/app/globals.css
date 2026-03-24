@@ -371,30 +371,24 @@ textarea {
 }
 
 .question-management-grid {
-  align-items: stretch;
+  align-items: start;
 }
 
 .question-list-panel {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  max-height: var(--question-list-max-height, 960px);
   min-height: 0;
-  overflow-y: auto;
-  padding-inline-end: 8px;
-}
-
-.question-list-panel > h3 {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  margin: 0 0 12px;
-  padding-block: 4px 8px;
-  background: var(--surface);
+  overflow: hidden;
 }
 
 .question-list-scroll {
+  min-height: 0;
+  flex: 1;
   display: grid;
   gap: 12px;
+  overflow-y: auto;
+  padding-inline-end: 8px;
 }
 
 .question-picker-list {
@@ -627,14 +621,8 @@ textarea {
 
   .question-list-panel {
     height: auto;
+    max-height: none;
     overflow: visible;
-    padding-inline-end: 0;
-  }
-
-  .question-list-panel > h3 {
-    position: static;
-    margin-bottom: 12px;
-    padding-block: 0;
   }
 
   .question-list-scroll {

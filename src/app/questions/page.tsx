@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { archiveQuestionAction, deleteQuestionAction, saveQuestionAction } from "@/app/actions";
+import { QuestionListHeightSync } from "@/components/QuestionListHeightSync";
 import { SubmitButton } from "@/components/SubmitButton";
 import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
@@ -70,6 +71,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       </div>
       {params.error ? <div className="alert">{params.error}</div> : null}
 
+      <QuestionListHeightSync />
       <div className="grid grid-2 question-management-grid">
         <div className="card" id="question-editor">
           <h3>{editingQuestion ? "עריכת שאלה" : "הוספת שאלה חדשה"}</h3>
@@ -162,7 +164,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           </form>
         </div>
 
-        <div className="card question-list-panel">
+        <div className="card question-list-panel" id="question-list-panel">
           <h3>שאלות קיימות ביחידה {QUESTION_UNIT_LABELS[selectedUnit]}</h3>
           <div className="stack question-list-scroll">
             {displayedQuestions.map((question) => (
