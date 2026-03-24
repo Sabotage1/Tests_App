@@ -65,6 +65,8 @@ export type TestListItem = {
   studentName: string | null;
   studentEmail: string | null;
   grade: number | null;
+  subjectNames: string[];
+  stageNames: string[];
 };
 
 export type TestQuestion = {

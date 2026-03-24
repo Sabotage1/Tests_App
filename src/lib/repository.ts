@@ -871,6 +871,8 @@ export async function getTests() {
     student_name: string | null;
     student_email: string | null;
     grade: string | null;
+    subject_names: string[] | null;
+    stage_names: string[] | null;
   }>(`
     SELECT
       t.id,
@@ -888,7 +890,19 @@ export async function getTests() {
       u.display_name AS creator_name,
       t.student_name,
       t.student_email,
-      t.grade::text
+      t.grade::text,
+      COALESCE((
+        SELECT array_agg(DISTINCT subject_name ORDER BY subject_name)
+        FROM test_questions tq
+        CROSS JOIN LATERAL unnest(tq.subject_names) AS subject_name
+        WHERE tq.test_id = t.id
+      ), ARRAY[]::TEXT[]) AS subject_names,
+      COALESCE((
+        SELECT array_agg(DISTINCT stage_name ORDER BY stage_name)
+        FROM test_questions tq
+        CROSS JOIN LATERAL unnest(tq.stage_names) AS stage_name
+        WHERE tq.test_id = t.id
+      ), ARRAY[]::TEXT[]) AS stage_names
     FROM tests t
     JOIN users u ON u.id = t.created_by
     ORDER BY t.created_at DESC
@@ -911,6 +925,8 @@ export async function getTests() {
     studentName: row.student_name,
     studentEmail: row.student_email,
     grade: row.grade ? Number(row.grade) : null,
+    subjectNames: formatArray(row.subject_names),
+    stageNames: formatArray(row.stage_names),
   }));
 }
 
