@@ -259,6 +259,24 @@ a {
   font-weight: 700;
 }
 
+.unit-toggle-loading {
+  opacity: 1;
+  box-shadow:
+    0 12px 24px rgba(14, 124, 184, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.unit-switcher-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: rgba(0, 112, 168, 0.08);
+  color: #155274;
+  font-weight: 700;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;

@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { archiveQuestionAction, deleteQuestionAction, saveQuestionAction } from "@/app/actions";
 import { QuestionListHeightSync } from "@/components/QuestionListHeightSync";
+import { QuestionUnitSwitcher } from "@/components/QuestionUnitSwitcher";
 import { SubmitButton } from "@/components/SubmitButton";
 import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
@@ -53,17 +54,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
         </div>
       </div>
 
-      <div className="button-row">
-        {unitOrder.map((unit) => (
-          <Link
-            key={unit}
-            className={selectedUnit === unit ? "button unit-toggle-active" : "button unit-toggle-idle"}
-            href={`/questions?unit=${unit}`}
-          >
-            {QUESTION_UNIT_LABELS[unit]}
-          </Link>
-        ))}
-      </div>
+      <QuestionUnitSwitcher selectedUnit={selectedUnit} unitOrder={unitOrder} />
       <div className="button-row">
         <Link className="button button-primary" href={`/questions?unit=${selectedUnit}#question-editor`} scroll>
           הוסף שאלה חדשה
