@@ -370,6 +370,24 @@ textarea {
   background: #fbfdff;
 }
 
+.question-management-grid {
+  align-items: stretch;
+}
+
+.question-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100vh - 240px);
+  overflow: hidden;
+}
+
+.question-panel-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  padding-inline-end: 8px;
+}
+
 .question-picker-list {
   display: grid;
   gap: 12px;
@@ -596,6 +614,16 @@ textarea {
   .grid-3,
   .split {
     grid-template-columns: 1fr;
+  }
+
+  .question-panel {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .question-panel-scroll {
+    overflow: visible;
+    padding-inline-end: 0;
   }
 
   .content {

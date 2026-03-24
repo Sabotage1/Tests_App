@@ -70,101 +70,103 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
       </div>
       {params.error ? <div className="alert">{params.error}</div> : null}
 
-      <div className="grid grid-2">
-        <div className="card" id="question-editor">
+      <div className="grid grid-2 question-management-grid">
+        <div className="card question-panel" id="question-editor">
           <h3>{editingQuestion ? "עריכת שאלה" : "הוספת שאלה חדשה"}</h3>
-          <form
-            action={saveQuestionAction}
-            key={editingQuestion?.id ?? `new-question-${selectedUnit}`}
-          >
-            <input name="id" type="hidden" defaultValue={editingQuestion?.id} />
-            <input name="unitFilter" type="hidden" value={selectedUnit} />
-            <label>
-              נוסח השאלה
-              <textarea name="text" required defaultValue={editingQuestion?.text} />
-            </label>
-            <label>
-              תשובה נכונה / צפויה
-              <textarea name="answer" defaultValue={editingQuestion?.answer} />
-            </label>
-            <div className="split">
+          <div className="question-panel-scroll">
+            <form
+              action={saveQuestionAction}
+              key={editingQuestion?.id ?? `new-question-${selectedUnit}`}
+            >
+              <input name="id" type="hidden" defaultValue={editingQuestion?.id} />
+              <input name="unitFilter" type="hidden" value={selectedUnit} />
               <label>
-                סוג שאלה
-                <select
-                  name="questionType"
-                  defaultValue={editingQuestion?.questionType === "multiple_choice" ? "multiple_choice" : "open"}
-                >
-                  <option value="open">פתוחה</option>
-                  <option value="multiple_choice">רב ברירה</option>
-                </select>
+                נוסח השאלה
+                <textarea name="text" required defaultValue={editingQuestion?.text} />
               </label>
               <label>
-                יחידה
-                <select name="unit" defaultValue={editFormUnit}>
-                  <option value="vfr">{QUESTION_UNIT_LABELS.vfr}</option>
-                  <option value="ifr">{QUESTION_UNIT_LABELS.ifr}</option>
-                </select>
+                תשובה נכונה / צפויה
+                <textarea name="answer" defaultValue={editingQuestion?.answer} />
               </label>
-              <label>
-                מקור
-                <input name="source" defaultValue={editingQuestion?.source ?? "הוזן ידנית"} required />
-              </label>
-            </div>
-            <label>
-              סימוכין
-              <input name="sourceReference" defaultValue={editorSourceReference} />
-            </label>
-            <p className="muted">מספר שאלה יכול לחזור בין יחידות שונות, אבל לא פעמיים בתוך אותה יחידה.</p>
-            <label className="checkbox-card">
-              <input
-                type="checkbox"
-                name="isBonusSource"
-                defaultChecked={editingQuestion?.isBonusSource}
-              />
-              לסמן כשאלת בונוס
-            </label>
-            <p className="muted">רק שאלות ממאגר המכ"ם שיסומנו כאן יוצגו וייבחרו במסלול שאלות הבונוס של מבחני המגדל.</p>
-            <div className="stack">
-              <strong>שיוך לנושאים</strong>
-              <div className="checkbox-grid">
-                {subjects.map((subject) => (
-                  <label key={subject.value} className="checkbox-card">
-                    <input
-                      type="checkbox"
-                      name="subjectIds"
-                      value={subject.value}
-                      defaultChecked={editingQuestion?.subjectIds.includes(subject.value)}
-                    />
-                    {subject.label}
-                  </label>
-                ))}
+              <div className="split">
+                <label>
+                  סוג שאלה
+                  <select
+                    name="questionType"
+                    defaultValue={editingQuestion?.questionType === "multiple_choice" ? "multiple_choice" : "open"}
+                  >
+                    <option value="open">פתוחה</option>
+                    <option value="multiple_choice">רב ברירה</option>
+                  </select>
+                </label>
+                <label>
+                  יחידה
+                  <select name="unit" defaultValue={editFormUnit}>
+                    <option value="vfr">{QUESTION_UNIT_LABELS.vfr}</option>
+                    <option value="ifr">{QUESTION_UNIT_LABELS.ifr}</option>
+                  </select>
+                </label>
+                <label>
+                  מקור
+                  <input name="source" defaultValue={editingQuestion?.source ?? "הוזן ידנית"} required />
+                </label>
               </div>
-            </div>
-            <div className="stack">
-              <strong>שיוך לשלבים</strong>
-              <div className="checkbox-grid">
-                {stages.map((stage) => (
-                  <label key={stage.value} className="checkbox-card">
-                    <input
-                      type="checkbox"
-                      name="stageIds"
-                      value={stage.value}
-                      defaultChecked={editingQuestion?.stageIds.includes(stage.value)}
-                    />
-                    {stage.label}
-                  </label>
-                ))}
+              <label>
+                סימוכין
+                <input name="sourceReference" defaultValue={editorSourceReference} />
+              </label>
+              <p className="muted">מספר שאלה יכול לחזור בין יחידות שונות, אבל לא פעמיים בתוך אותה יחידה.</p>
+              <label className="checkbox-card">
+                <input
+                  type="checkbox"
+                  name="isBonusSource"
+                  defaultChecked={editingQuestion?.isBonusSource}
+                />
+                לסמן כשאלת בונוס
+              </label>
+              <p className="muted">רק שאלות ממאגר המכ"ם שיסומנו כאן יוצגו וייבחרו במסלול שאלות הבונוס של מבחני המגדל.</p>
+              <div className="stack">
+                <strong>שיוך לנושאים</strong>
+                <div className="checkbox-grid">
+                  {subjects.map((subject) => (
+                    <label key={subject.value} className="checkbox-card">
+                      <input
+                        type="checkbox"
+                        name="subjectIds"
+                        value={subject.value}
+                        defaultChecked={editingQuestion?.subjectIds.includes(subject.value)}
+                      />
+                      {subject.label}
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
-            <SubmitButton pendingLabel="שומר שאלה...">
-              שמירת שאלה
-            </SubmitButton>
-          </form>
+              <div className="stack">
+                <strong>שיוך לשלבים</strong>
+                <div className="checkbox-grid">
+                  {stages.map((stage) => (
+                    <label key={stage.value} className="checkbox-card">
+                      <input
+                        type="checkbox"
+                        name="stageIds"
+                        value={stage.value}
+                        defaultChecked={editingQuestion?.stageIds.includes(stage.value)}
+                      />
+                      {stage.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <SubmitButton pendingLabel="שומר שאלה...">
+                שמירת שאלה
+              </SubmitButton>
+            </form>
+          </div>
         </div>
 
-        <div className="card">
+        <div className="card question-panel">
           <h3>שאלות קיימות ביחידה {QUESTION_UNIT_LABELS[selectedUnit]}</h3>
-          <div className="stack">
+          <div className="stack question-panel-scroll">
             {displayedQuestions.map((question) => (
               <div className="question-block" key={question.id}>
                 <div className="page-header">
