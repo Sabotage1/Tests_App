@@ -379,14 +379,22 @@ textarea {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  padding-inline-end: 8px;
+}
+
+.question-list-panel > h3 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0 0 12px;
+  padding-block: 4px 8px;
+  background: var(--surface);
 }
 
 .question-list-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding-inline-end: 8px;
+  display: grid;
+  gap: 12px;
 }
 
 .question-picker-list {
@@ -619,8 +627,14 @@ textarea {
 
   .question-list-panel {
     height: auto;
-    max-height: none;
     overflow: visible;
+    padding-inline-end: 0;
+  }
+
+  .question-list-panel > h3 {
+    position: static;
+    margin-bottom: 12px;
+    padding-block: 0;
   }
 
   .question-list-scroll {
