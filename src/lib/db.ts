@@ -20,6 +20,8 @@ declare global {
 const connectionString =
   process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:55432/atc_tests";
 const QUESTION_SEED_COMPLETED_KEY = "question_seed_completed";
+const SUBJECT_SEED_COMPLETED_KEY = "subject_seed_completed";
+const STAGE_SEED_COMPLETED_KEY = "stage_seed_completed";
 
 function getInitialUsers() {
   if (process.env.NODE_ENV !== "production") {
@@ -269,6 +271,19 @@ async function seedUsers(client: PoolClient) {
 }
 
 async function seedLookupTable(client: PoolClient, table: "subjects" | "stages", values: string[]) {
+  const seedKey = table === "subjects" ? SUBJECT_SEED_COMPLETED_KEY : STAGE_SEED_COMPLETED_KEY;
+  const seedStatus = await client.query<{ value: string }>("SELECT value FROM app_settings WHERE key = $1", [seedKey]);
+
+  if (seedStatus.rows[0]?.value === "true") {
+    return;
+  }
+
+  const existingCountResult = await client.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM ${table}`);
+  if (Number(existingCountResult.rows[0]?.count ?? 0) > 0) {
+    await upsertAppSetting(client, seedKey, "true");
+    return;
+  }
+
   const now = new Date();
   const insertQuery = `
     INSERT INTO ${table} (id, name, unit, created_at, updated_at)
@@ -279,6 +294,8 @@ async function seedLookupTable(client: PoolClient, table: "subjects" | "stages",
   for (const value of values) {
     await client.query(insertQuery, [nanoid(), value, "vfr", now, now]);
   }
+
+  await upsertAppSetting(client, seedKey, "true");
 }
 
 async function upsertAppSetting(client: PoolClient, key: string, value: string) {
