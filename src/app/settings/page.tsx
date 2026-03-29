@@ -316,6 +316,18 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
           <div className="stack">
             <div className="card">
+              <h3>גיבוי מאגר השאלות</h3>
+              <p className="muted">
+                הורדת קובץ JSON מלא ומסודר של נושאים, שלבים ושאלות מכל היחידות, כדי לגבות את המאגר ולהעלות אותו שוב בעתיד בצורה מסודרת.
+              </p>
+              <div className="button-row">
+                <a className="button button-primary" href="/api/admin/question-bank/export">
+                  הורדת גיבוי מאגר השאלות
+                </a>
+              </div>
+            </div>
+
+            <div className="card">
               <h3>הוספת משתמש</h3>
               <form action={saveUserAction}>
                 <div className="grid grid-3">

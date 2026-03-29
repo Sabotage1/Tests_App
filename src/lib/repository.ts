@@ -4,6 +4,7 @@ import type { PoolClient, QueryResultRow } from "pg";
 
 import {
   APP_NAME,
+  APP_VERSION,
   DEFAULT_BONUS_QUESTION_POINTS,
   DEFAULT_DURATION_MINUTES,
   MISSING_ANSWER_TEXT,
@@ -102,6 +103,32 @@ type QuestionSelectionRow = {
   stage_ids: string[] | null;
   subject_names: string[] | null;
   stage_names: string[] | null;
+};
+
+type LookupExportRow = {
+  id: string;
+  name: string;
+  unit: QuestionUnit;
+  created_at: string;
+  updated_at: string;
+};
+
+type QuestionBankExportRow = {
+  id: string;
+  text: string;
+  answer: string;
+  questionType: string;
+  isBonusSource: boolean;
+  unit: QuestionUnit;
+  source: string;
+  sourceReference: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  subjectIds: string[] | null;
+  stageIds: string[] | null;
+  subjectNames: string[] | null;
+  stageNames: string[] | null;
 };
 
 function escapeHtml(value: string) {
@@ -274,6 +301,99 @@ export async function getStages(unit?: QuestionUnit) {
     unit ? [unit] : [],
   );
   return result.rows;
+}
+
+export async function getQuestionBankExport() {
+  const [subjectsResult, stagesResult, questionsResult] = await Promise.all([
+    query<LookupExportRow>(
+      `
+        SELECT id, name, unit, created_at::text, updated_at::text
+        FROM subjects
+        ORDER BY unit, name
+      `,
+    ),
+    query<LookupExportRow>(
+      `
+        SELECT id, name, unit, created_at::text, updated_at::text
+        FROM stages
+        ORDER BY unit, name
+      `,
+    ),
+    query<QuestionBankExportRow>(`
+      SELECT
+        q.id,
+        q.text,
+        q.answer,
+        q.question_type AS "questionType",
+        q.is_bonus_source AS "isBonusSource",
+        q.unit,
+        q.source,
+        q.source_reference AS "sourceReference",
+        q.is_active AS "isActive",
+        q.created_at::text AS "createdAt",
+        q.updated_at::text AS "updatedAt",
+        COALESCE(array_remove(array_agg(DISTINCT s.id), NULL), ARRAY[]::TEXT[]) AS "subjectIds",
+        COALESCE(array_remove(array_agg(DISTINCT st.id), NULL), ARRAY[]::TEXT[]) AS "stageIds",
+        COALESCE(array_remove(array_agg(DISTINCT s.name), NULL), ARRAY[]::TEXT[]) AS "subjectNames",
+        COALESCE(array_remove(array_agg(DISTINCT st.name), NULL), ARRAY[]::TEXT[]) AS "stageNames"
+      FROM questions q
+      LEFT JOIN question_subjects qs ON qs.question_id = q.id
+      LEFT JOIN subjects s ON s.id = qs.subject_id
+      LEFT JOIN question_stages qst ON qst.question_id = q.id
+      LEFT JOIN stages st ON st.id = qst.stage_id
+      GROUP BY q.id
+      ORDER BY
+        q.unit ASC,
+        q.source ASC,
+        NULLIF(regexp_replace(COALESCE(q.source_reference, ''), '\\D', '', 'g'), '')::INTEGER NULLS LAST,
+        q.source_reference ASC NULLS LAST,
+        q.created_at ASC
+    `),
+  ]);
+
+  return {
+    schemaVersion: 1,
+    exportType: "question-bank",
+    appName: APP_NAME,
+    appVersion: APP_VERSION,
+    exportedAt: new Date().toISOString(),
+    counts: {
+      subjects: subjectsResult.rows.length,
+      stages: stagesResult.rows.length,
+      questions: questionsResult.rows.length,
+    },
+    subjects: subjectsResult.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      unit: row.unit,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })),
+    stages: stagesResult.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      unit: row.unit,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    })),
+    questions: questionsResult.rows.map((row) => ({
+      id: row.id,
+      text: row.text,
+      answer: row.answer,
+      questionType: row.questionType,
+      isBonusSource: row.isBonusSource,
+      unit: row.unit,
+      source: row.source,
+      sourceReference: row.sourceReference,
+      isActive: row.isActive,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      subjectIds: formatArray(row.subjectIds),
+      stageIds: formatArray(row.stageIds),
+      subjectNames: formatArray(row.subjectNames),
+      stageNames: formatArray(row.stageNames),
+    })),
+  };
 }
 
 export async function getUsers() {
