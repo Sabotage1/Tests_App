@@ -78,7 +78,7 @@ export default async function GradePage({ params, searchParams }: GradePageProps
             <div className="card" key={question.id}>
               <input type="hidden" name="questionIds" value={question.id} />
               <strong>{question.isBonus ? "שאלת בונוס" : "שאלה"} {question.orderIndex}</strong>
-              {question.isBonus ? <p className="muted">שאלה זו נמשכה ממאגר יחידת המכ"ם ומסומנת כשאלת בונוס.</p> : null}
+              {question.isBonus ? <p className="muted">שאלה זו נמשכה ממאגר שאלות הבונוס ומסומנת כשאלת בונוס.</p> : null}
               <p style={{ whiteSpace: "pre-wrap" }}>{question.prompt}</p>
               <div className="split grade-split">
                 <div className="question-block grade-panel expected-answer">

@@ -116,7 +116,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
               />
               לסמן כשאלת בונוס
             </label>
-            <p className="muted">רק שאלות ממאגר המכ"ם שיסומנו כאן יוצגו וייבחרו במסלול שאלות הבונוס של מבחני המגדל.</p>
+            <p className="muted">שאלות שיסומנו כאן ייכנסו למאגר שאלות הבונוס, ויוכלו להישלף אקראית למבחנים מתוך VFR או IFR.</p>
             <div className="stack">
               <strong>שיוך לנושאים</strong>
               <div className="checkbox-grid">

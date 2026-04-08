@@ -52,7 +52,7 @@ export default async function PrintTestPage({ params }: PrintPageProps) {
         {test.questions.map((question) => (
           <div key={question.id} style={{ marginBottom: 28 }}>
             <h3>{question.isBonus ? "שאלת בונוס" : "שאלה"} {question.orderIndex}</h3>
-            {question.isBonus ? <p>שאלה זו נוספה ממאגר יחידת המכ"ם כשאלת בונוס.</p> : null}
+            {question.isBonus ? <p>שאלה זו נוספה ממאגר שאלות הבונוס.</p> : null}
             <p style={{ whiteSpace: "pre-wrap" }}>{question.prompt}</p>
             {isGraded ? (
               <>

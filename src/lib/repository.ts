@@ -8,6 +8,7 @@ import {
   DEFAULT_BONUS_QUESTION_POINTS,
   DEFAULT_DURATION_MINUTES,
   MISSING_ANSWER_TEXT,
+  QUESTION_UNITS,
   type QuestionUnit,
 } from "@/lib/constants";
 import { query, withTransaction } from "@/lib/db";
@@ -64,6 +65,10 @@ function isMissingDuration(value: number | undefined) {
 function hasExpectedAnswer(answer: string) {
   const normalizedAnswer = answer.trim();
   return normalizedAnswer !== "" && normalizedAnswer !== MISSING_ANSWER_TEXT;
+}
+
+function pickRandomItem<T>(items: T[]) {
+  return items[Math.floor(Math.random() * items.length)];
 }
 
 function getScoredQuestionCount(questions: Array<{ isBonus: boolean }>) {
@@ -626,6 +631,7 @@ async function getQuestionPoolsForTestBuilder(input: {
   selectionMode: "random" | "filtered" | "manual";
   unit: QuestionUnit;
   bonusOnly?: boolean;
+  excludeQuestionIds?: string[];
   onlyAnswered?: boolean;
   subjectIds: string[];
   stageIds: string[];
@@ -658,11 +664,16 @@ async function getQuestionPoolsForTestBuilder(input: {
   );
 
   const basePool = result.rows;
+  const excludedQuestionIds = new Set(normalizeDistinctIds(input.excludeQuestionIds));
 
   let eligiblePool = input.onlyAnswered ? basePool.filter((row) => hasExpectedAnswer(row.answer)) : basePool;
 
   if (input.bonusOnly) {
     eligiblePool = eligiblePool.filter((row) => row.is_bonus_source);
+  }
+
+  if (excludedQuestionIds.size > 0) {
+    eligiblePool = eligiblePool.filter((row) => !excludedQuestionIds.has(row.id));
   }
 
   if (input.selectionMode === "filtered") {
@@ -713,6 +724,7 @@ export async function getTestDraftQuestions(input: {
   unit: QuestionUnit;
   questionCount: number;
   bonusOnly?: boolean;
+  excludeQuestionIds?: string[];
   onlyAnswered?: boolean;
   subjectIds: string[];
   stageIds: string[];
@@ -751,7 +763,7 @@ export async function getTestDraftQuestions(input: {
     if (selectedPool.length < requiredCount) {
       throw new Error(
         input.bonusOnly
-          ? 'אין מספיק שאלות בונוס פעילות שסומנו במאגר המכ"ם.'
+          ? "אין מספיק שאלות בונוס פעילות שסומנו במאגר."
           : "אין מספיק שאלות פעילות לבניית המבחן לפי הסינון שבחרת.",
       );
     }
@@ -759,6 +771,80 @@ export async function getTestDraftQuestions(input: {
 
   return {
     eligibleQuestions: eligiblePool.map(mapTestBuilderQuestion),
+    selectedQuestions: selectedPool.map(mapTestBuilderQuestion),
+  };
+}
+
+export async function getBonusQuestionDraft(input: {
+  questionCount: number;
+  excludeQuestionIds?: string[];
+  selectedQuestionIds?: string[];
+  sourceUnit?: QuestionUnit;
+}) {
+  const requiredCount = Number.isNaN(input.questionCount) ? 0 : Math.max(0, input.questionCount);
+  const selectedQuestionIds = normalizeDistinctIds(input.selectedQuestionIds);
+  const missingSelectionMessage = "חלק משאלות הבונוס שנבחרו כבר לא זמינות יותר. יש לרענן את המסך ולנסות שוב.";
+
+  if (requiredCount < 1) {
+    throw new Error("יש לבחור לפחות שאלת בונוס אחת.");
+  }
+
+  const pools = await Promise.all(
+    QUESTION_UNITS.map(async (unit) => {
+      const { eligiblePool } = await getQuestionPoolsForTestBuilder({
+        selectionMode: "random",
+        unit,
+        bonusOnly: true,
+        excludeQuestionIds: input.excludeQuestionIds,
+        subjectIds: [],
+        stageIds: [],
+      });
+
+      return { unit, eligiblePool };
+    }),
+  );
+
+  const matchingPools = pools.filter(({ unit, eligiblePool }) => {
+    if (input.sourceUnit && unit !== input.sourceUnit) {
+      return false;
+    }
+
+    if (eligiblePool.length < requiredCount) {
+      return false;
+    }
+
+    if (selectedQuestionIds.length === 0) {
+      return true;
+    }
+
+    const eligibleIds = new Set(eligiblePool.map((row) => row.id));
+    return selectedQuestionIds.every((questionId) => eligibleIds.has(questionId));
+  });
+
+  if (matchingPools.length === 0) {
+    throw new Error(selectedQuestionIds.length > 0 ? missingSelectionMessage : "אין מספיק שאלות בונוס פעילות שסומנו במאגר.");
+  }
+
+  const selectedPoolCandidate = input.sourceUnit
+    ? matchingPools[0]
+    : pickRandomItem(matchingPools);
+
+  if (!selectedPoolCandidate) {
+    throw new Error("אין מספיק שאלות בונוס פעילות שסומנו במאגר.");
+  }
+
+  const selectedPool =
+    selectedQuestionIds.length > 0
+      ? resolveExactQuestionSelection(
+          selectedPoolCandidate.eligiblePool,
+          selectedQuestionIds,
+          missingSelectionMessage,
+        )
+      : [...selectedPoolCandidate.eligiblePool].sort(() => Math.random() - 0.5).slice(0, requiredCount);
+
+  return {
+    sourceUnit: selectedPoolCandidate.unit,
+    eligibleQuestions: selectedPoolCandidate.eligiblePool.map(mapTestBuilderQuestion),
     selectedQuestions: selectedPool.map(mapTestBuilderQuestion),
   };
 }
@@ -841,7 +927,7 @@ export async function upsertQuestion(input: {
   stageIds: string[];
 }) {
   const questionId = input.id ?? nanoid();
-  const isBonusSource = input.unit === "ifr" && Boolean(input.isBonusSource);
+  const isBonusSource = Boolean(input.isBonusSource);
 
   await withTransaction(async (client) => {
     const normalizedReference = normalizeSourceReference(input.sourceReference);
@@ -1057,6 +1143,7 @@ export async function createTest(input: {
   unit: QuestionUnit;
   questionCount: number;
   bonusQuestionCount?: number;
+  bonusSourceUnit?: QuestionUnit;
   durationMinutes?: number;
   sentAt?: string;
   onlyAnswered?: boolean;
@@ -1072,7 +1159,7 @@ export async function createTest(input: {
     ? await getDefaultTestDurationMinutes()
     : input.durationMinutes!;
   const bonusQuestionCount =
-    input.unit === "vfr" && !Number.isNaN(input.bonusQuestionCount ?? 0)
+    !Number.isNaN(input.bonusQuestionCount ?? 0)
       ? Math.max(0, input.bonusQuestionCount ?? 0)
       : 0;
   const explicitSelection =
@@ -1088,14 +1175,11 @@ export async function createTest(input: {
   });
   const { selectedQuestions: bonusQuestions } =
     bonusQuestionCount > 0
-      ? await getTestDraftQuestions({
-          selectionMode: "random",
-          unit: "ifr",
+      ? await getBonusQuestionDraft({
           questionCount: bonusQuestionCount,
-          bonusOnly: true,
-          subjectIds: [],
-          stageIds: [],
+          sourceUnit: input.bonusSourceUnit,
           selectedQuestionIds: input.bonusSelectedQuestionIds,
+          excludeQuestionIds: selectedQuestions.map((question) => question.id),
         })
       : { selectedQuestions: [] };
 

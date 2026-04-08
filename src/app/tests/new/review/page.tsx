@@ -4,7 +4,7 @@ import { TestDraftReview } from "@/components/TestDraftReview";
 import { requireEditor } from "@/lib/auth";
 import type { QuestionUnit } from "@/lib/constants";
 import { QUESTION_UNIT_LABELS } from "@/lib/constants";
-import { getTestDraftQuestions } from "@/lib/repository";
+import { getBonusQuestionDraft, getTestDraftQuestions } from "@/lib/repository";
 import type { TestBuilderQuestion } from "@/lib/types";
 
 type ReviewPageProps = {
@@ -23,6 +23,11 @@ function getManyValues(value: string | string[] | undefined) {
   return value ? [value] : [];
 }
 
+function getOptionalUnitValue(value: string | string[] | undefined) {
+  const normalized = getSingleValue(value);
+  return normalized === "ifr" || normalized === "vfr" ? normalized : undefined;
+}
+
 export default async function NewTestReviewPage({ searchParams }: ReviewPageProps) {
   await requireEditor();
   const params = await searchParams;
@@ -30,6 +35,7 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
   const selectionMode = getSingleValue(params.selectionMode) === "filtered" ? "filtered" : "random";
   const selectedQuestionIds = getManyValues(params.selectedQuestionIds);
   const bonusSelectedQuestionIds = getManyValues(params.bonusSelectedQuestionIds);
+  const bonusSourceUnit = getOptionalUnitValue(params.bonusSourceUnit);
   const questionCount = Number(getSingleValue(params.questionCount) || "0");
   const bonusQuestionCount = Number(getSingleValue(params.bonusQuestionCount) || "0");
   const onlyAnswered = getSingleValue(params.onlyAnswered) === "1";
@@ -41,7 +47,7 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
   }
 
   let draft;
-  let bonusDraft: { eligibleQuestions: TestBuilderQuestion[]; selectedQuestions: TestBuilderQuestion[] } = {
+  let bonusDraft: { eligibleQuestions: TestBuilderQuestion[]; selectedQuestions: TestBuilderQuestion[]; sourceUnit?: QuestionUnit } = {
     eligibleQuestions: [],
     selectedQuestions: [],
   };
@@ -57,14 +63,11 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
       selectedQuestionIds,
     });
 
-    if (unit === "vfr" && bonusQuestionCount > 0) {
-      bonusDraft = await getTestDraftQuestions({
-        selectionMode: "random",
-        unit: "ifr",
+    if (bonusQuestionCount > 0) {
+      bonusDraft = await getBonusQuestionDraft({
         questionCount: bonusQuestionCount,
-        bonusOnly: true,
-        subjectIds: [],
-        stageIds: [],
+        sourceUnit: bonusSourceUnit,
+        excludeQuestionIds: draft.selectedQuestions.map((question) => question.id),
         selectedQuestionIds: bonusSelectedQuestionIds.length > 0 ? bonusSelectedQuestionIds : undefined,
       });
     }
@@ -87,6 +90,7 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
         durationMinutes={getSingleValue(params.durationMinutes)}
         bonusEligibleQuestions={bonusDraft.eligibleQuestions}
         bonusQuestionCount={bonusDraft.selectedQuestions.length}
+        bonusSourceUnit={bonusQuestionCount > 0 ? bonusDraft.sourceUnit : undefined}
         initialSelectedBonusQuestionIds={bonusDraft.selectedQuestions.map((question) => question.id)}
         eligibleQuestions={draft.eligibleQuestions}
         initialSelectedQuestionIds={draft.selectedQuestions.map((question) => question.id)}

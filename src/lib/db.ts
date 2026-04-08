@@ -196,10 +196,6 @@ async function createSchema(client: PoolClient) {
     SET unit = 'vfr'
     WHERE unit IS NULL OR unit = '';
 
-    UPDATE questions
-    SET is_bonus_source = FALSE
-    WHERE unit <> 'ifr' AND is_bonus_source = TRUE;
-
     UPDATE tests
     SET unit = 'vfr'
     WHERE unit IS NULL OR unit = '';

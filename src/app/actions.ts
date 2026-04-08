@@ -18,6 +18,7 @@ import {
   deleteUser,
   deleteAllTests,
   ensureShareToken,
+  getBonusQuestionDraft,
   gradeTest,
   getDefaultTestDurationMinutes,
   getBonusQuestionPoints,
@@ -40,6 +41,11 @@ function getMany(formData: FormData, name: string) {
     .getAll(name)
     .map((value) => value.toString())
     .filter(Boolean);
+}
+
+function getOptionalQuestionUnit(value: FormDataEntryValue | null) {
+  const unit = value?.toString();
+  return unit === "ifr" || unit === "vfr" ? unit : undefined;
 }
 
 function getUnitRedirectSuffix(formData: FormData) {
@@ -321,6 +327,7 @@ export async function createTestAction(formData: FormData) {
       unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
       questionCount: Number(formData.get("questionCount")?.toString() ?? "0"),
       bonusQuestionCount: Number(formData.get("bonusQuestionCount")?.toString() ?? "0"),
+      bonusSourceUnit: getOptionalQuestionUnit(formData.get("bonusSourceUnit")),
       durationMinutes: rawDuration === "" ? undefined : Number(rawDuration),
       sentAt: formData.get("sentAt")?.toString() ?? "",
       onlyAnswered: formData.get("onlyAnswered")?.toString() === "on",
@@ -355,8 +362,7 @@ export async function prepareTestDraftAction(formData: FormData) {
   const stageIds = getMany(formData, "stageIds");
   const onlyAnswered = formData.get("onlyAnswered")?.toString() === "on";
   const questionCount = Number(formData.get("questionCount")?.toString() ?? "0");
-  const bonusQuestionCount =
-    unit === "vfr" ? Number(formData.get("bonusQuestionCount")?.toString() ?? "0") : 0;
+  const bonusQuestionCount = Number(formData.get("bonusQuestionCount")?.toString() ?? "0");
   let redirectPath: RedirectPath | null = null;
 
   try {
@@ -370,15 +376,11 @@ export async function prepareTestDraftAction(formData: FormData) {
     });
     const bonusDraft =
       bonusQuestionCount > 0
-        ? await getTestDraftQuestions({
-            selectionMode: "random",
-            unit: "ifr",
+        ? await getBonusQuestionDraft({
             questionCount: bonusQuestionCount,
-            bonusOnly: true,
-            subjectIds: [],
-            stageIds: [],
+            excludeQuestionIds: draft.selectedQuestions.map((question) => question.id),
           })
-        : { selectedQuestions: [] };
+        : null;
 
     const params = new URLSearchParams();
     params.set("title", formData.get("title")?.toString() ?? "");
@@ -405,8 +407,11 @@ export async function prepareTestDraftAction(formData: FormData) {
     appendMany(
       params,
       "bonusSelectedQuestionIds",
-      bonusDraft.selectedQuestions.map((question) => question.id),
+      bonusDraft?.selectedQuestions.map((question) => question.id) ?? [],
     );
+    if (bonusDraft?.sourceUnit) {
+      params.set("bonusSourceUnit", bonusDraft.sourceUnit);
+    }
     redirectPath = `/tests/new/review?${params.toString()}` as RedirectPath;
   } catch (error) {
     const message = error instanceof Error ? error.message : "יצירת טיוטת המבחן נכשלה";

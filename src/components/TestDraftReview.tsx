@@ -12,6 +12,7 @@ type TestDraftReviewProps = {
   backHref: string;
   bonusEligibleQuestions: TestBuilderQuestion[];
   bonusQuestionCount: number;
+  bonusSourceUnit?: QuestionUnit;
   durationMinutes: string;
   eligibleQuestions: TestBuilderQuestion[];
   initialSelectedBonusQuestionIds: string[];
@@ -37,6 +38,7 @@ export function TestDraftReview({
   backHref,
   bonusEligibleQuestions,
   bonusQuestionCount,
+  bonusSourceUnit,
   durationMinutes,
   eligibleQuestions,
   initialSelectedBonusQuestionIds,
@@ -57,12 +59,14 @@ export function TestDraftReview({
   const questionsById = new Map(eligibleQuestions.map((question) => [question.id, question]));
   const bonusQuestionsById = new Map(bonusEligibleQuestions.map((question) => [question.id, question]));
   const totalQuestionCount = selectedQuestionIds.length + selectedBonusQuestionIds.length;
+  const isSharedBonusPool = bonusSourceUnit === unit;
 
   function renderQuestionSection(input: {
     eligibleQuestions: TestBuilderQuestion[];
     questionsById: Map<string, TestBuilderQuestion>;
     selectedIds: string[];
     setSelectedIds: Dispatch<SetStateAction<string[]>>;
+    blockedIds?: string[];
     title: string;
     replacementLabel: string;
     slotPrefix: string;
@@ -113,9 +117,11 @@ export function TestDraftReview({
                   {input.eligibleQuestions.map((option) => {
                     const usedInAnotherSlot =
                       input.selectedIds.includes(option.id) && input.selectedIds[index] !== option.id;
+                    const blockedByOtherSection =
+                      input.blockedIds?.includes(option.id) && input.selectedIds[index] !== option.id;
 
                     return (
-                      <option disabled={usedInAnotherSlot} key={option.id} value={option.id}>
+                      <option disabled={usedInAnotherSlot || blockedByOtherSection} key={option.id} value={option.id}>
                         {(option.sourceReference || "ללא סימוכין") + " | " + option.source}
                       </option>
                     );
@@ -160,6 +166,7 @@ export function TestDraftReview({
             {QUESTION_UNIT_LABELS[unit]} | {selectionModeLabels[selectionMode]} | {questionCount} שאלות
             {bonusQuestionCount > 0 ? ` + ${bonusQuestionCount} בונוס` : ""}
           </p>
+          {bonusSourceUnit ? <p className="muted">מאגר שאלות בונוס: {QUESTION_UNIT_LABELS[bonusSourceUnit]}</p> : null}
         </div>
       </div>
 
@@ -169,6 +176,7 @@ export function TestDraftReview({
         <input type="hidden" name="unit" value={unit} />
         <input type="hidden" name="questionCount" value={String(selectedQuestionIds.length)} />
         <input type="hidden" name="bonusQuestionCount" value={String(selectedBonusQuestionIds.length)} />
+        <input type="hidden" name="bonusSourceUnit" value={bonusSourceUnit ?? ""} />
         <input type="hidden" name="durationMinutes" value={durationMinutes} />
         <input type="hidden" name="sentAt" value={sentAt} />
         <input type="hidden" name="studentName" value={studentName} />
@@ -193,6 +201,7 @@ export function TestDraftReview({
             questionsById,
             selectedIds: selectedQuestionIds,
             setSelectedIds: setSelectedQuestionIds,
+            blockedIds: isSharedBonusPool ? selectedBonusQuestionIds : [],
             title: "שאלות המבחן",
             replacementLabel: "החלפת שאלה",
             slotPrefix: "regular",
@@ -202,7 +211,8 @@ export function TestDraftReview({
             questionsById: bonusQuestionsById,
             selectedIds: selectedBonusQuestionIds,
             setSelectedIds: setSelectedBonusQuestionIds,
-            title: 'שאלות בונוס שסומנו במאגר המכ"ם',
+            blockedIds: isSharedBonusPool ? selectedQuestionIds : [],
+            title: bonusSourceUnit ? `שאלות בונוס שסומנו ב${QUESTION_UNIT_LABELS[bonusSourceUnit]}` : "שאלות בונוס",
             replacementLabel: "החלפת שאלת בונוס",
             slotPrefix: "bonus",
             isBonus: true,

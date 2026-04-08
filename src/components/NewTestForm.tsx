@@ -29,7 +29,6 @@ export function NewTestForm({
   const [selectionMode, setSelectionMode] = useState<SelectionMode>("random");
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
   const isManualSelection = selectionMode === "manual";
-  const canUseBonusQuestions = selectedUnit === "vfr";
 
   return (
     <form action={prepareTestDraftAction}>
@@ -47,12 +46,10 @@ export function NewTestForm({
           כמות שאלות
           <input name="questionCount" type="number" min="1" defaultValue="10" required />
         </label>
-        {canUseBonusQuestions ? (
-          <label>
-            כמות שאלות בונוס
-            <input name="bonusQuestionCount" type="number" min="0" defaultValue="0" />
-          </label>
-        ) : null}
+        <label>
+          כמות שאלות בונוס
+          <input name="bonusQuestionCount" type="number" min="0" defaultValue="0" />
+        </label>
         <label>
           משך זמן בדקות
           <input
@@ -94,11 +91,9 @@ export function NewTestForm({
         ) : (
           <p className="muted">במבחן אקראי או מסונן תיפתח קודם תצוגה מקדימה, שבה אפשר לעבור על השאלות ולהחליף אותן לפני שמירת המבחן.</p>
         )}
-        {canUseBonusQuestions ? (
-          <p className="muted">
-            שאלות הבונוס זמינות רק למבחני יחידת המגדל, נשלפות רק משאלות שסומנו כשאלות בונוס במאגר יחידת המכ"ם, וכל אחת שווה כרגע {bonusQuestionPoints} נקודות מעל 100.
-          </p>
-        ) : null}
+        <p className="muted">
+          שאלות הבונוס זמינות לכל מבחן, נשלפות אקראית משאלות שסומנו כשאלות בונוס במאגרי {QUESTION_UNIT_LABELS.vfr} או {QUESTION_UNIT_LABELS.ifr}, וכל אחת שווה כרגע {bonusQuestionPoints} נקודות מעל 100.
+        </p>
       </div>
 
       <div className="stack">

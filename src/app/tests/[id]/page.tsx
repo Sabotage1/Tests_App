@@ -174,7 +174,7 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
             {test.questions.map((question) => (
               <div className="question-block" key={question.id}>
                 <strong>{question.isBonus ? "שאלת בונוס" : "שאלה"} {question.orderIndex}</strong>
-                {question.isBonus ? <p className="muted">שאלה זו נוספה ממאגר יחידת המכ"ם כשאלת בונוס.</p> : null}
+                {question.isBonus ? <p className="muted">שאלה זו נוספה ממאגר שאלות הבונוס.</p> : null}
                 <p style={{ whiteSpace: "pre-wrap" }}>{question.prompt}</p>
                 <div className="pill-row">
                   {question.subjectNames.map((subject) => (
