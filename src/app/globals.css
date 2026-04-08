@@ -342,6 +342,13 @@ textarea {
   font-size: 0.9rem;
 }
 
+.pill-bonus {
+  background: linear-gradient(135deg, #ffe16b, #f6c33e);
+  color: #5f4200;
+  box-shadow: inset 0 0 0 1px rgba(95, 66, 0, 0.14);
+  font-weight: 800;
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -398,6 +405,19 @@ textarea {
   max-height: var(--question-list-max-height, 960px);
   min-height: 0;
   overflow: hidden;
+}
+
+.question-filter-form {
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgba(210, 219, 229, 0.8);
+}
+
+.question-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
 }
 
 .question-list-scroll {
@@ -646,6 +666,10 @@ textarea {
   .question-list-scroll {
     overflow: visible;
     padding-inline-end: 0;
+  }
+
+  .question-filter-grid {
+    grid-template-columns: 1fr;
   }
 
   .content {

@@ -48,9 +48,28 @@ function getOptionalQuestionUnit(value: FormDataEntryValue | null) {
   return unit === "ifr" || unit === "vfr" ? unit : undefined;
 }
 
-function getUnitRedirectSuffix(formData: FormData) {
-  const unit = formData.get("unitFilter")?.toString();
-  return unit === "ifr" ? "?unit=ifr" : "?unit=vfr";
+function getQuestionsRedirectSuffix(formData: FormData) {
+  const params = new URLSearchParams();
+  const unit = formData.get("unitFilter")?.toString() === "ifr" ? "ifr" : "vfr";
+  const bonusFilter = formData.get("bonusFilter")?.toString();
+  const subjectFilter = formData.get("subjectFilter")?.toString().trim() ?? "";
+  const stageFilter = formData.get("stageFilter")?.toString().trim() ?? "";
+
+  params.set("unit", unit);
+
+  if (bonusFilter === "bonus" || bonusFilter === "regular") {
+    params.set("bonus", bonusFilter);
+  }
+
+  if (subjectFilter) {
+    params.set("subject", subjectFilter);
+  }
+
+  if (stageFilter) {
+    params.set("stage", stageFilter);
+  }
+
+  return `?${params.toString()}`;
 }
 
 function getLookupSettingsRedirect(formData: FormData, extra?: string): RedirectPath {
@@ -89,7 +108,7 @@ export async function saveQuestionAction(formData: FormData) {
   await requireEditor();
 
   const id = formData.get("id")?.toString() || null;
-  const redirectSuffix = getUnitRedirectSuffix(formData);
+  const redirectSuffix = getQuestionsRedirectSuffix(formData);
   try {
     await upsertQuestion({
       id,
@@ -105,37 +124,37 @@ export async function saveQuestionAction(formData: FormData) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "שמירת השאלה נכשלה";
-    redirect(`/questions${redirectSuffix}&error=${encodeURIComponent(message)}`);
+    redirect(`/questions${redirectSuffix}&error=${encodeURIComponent(message)}` as RedirectPath);
   }
 
   revalidatePath("/questions");
-  redirect(`/questions${redirectSuffix}`);
+  redirect(`/questions${redirectSuffix}` as RedirectPath);
 }
 
 export async function archiveQuestionAction(formData: FormData) {
   await requireAdmin();
-  const redirectSuffix = getUnitRedirectSuffix(formData);
+  const redirectSuffix = getQuestionsRedirectSuffix(formData);
   const id = formData.get("id")?.toString();
   if (!id) {
-    redirect(`/questions${redirectSuffix}`);
+    redirect(`/questions${redirectSuffix}` as RedirectPath);
   }
 
   await archiveQuestion(id);
   revalidatePath("/questions");
-  redirect(`/questions${redirectSuffix}`);
+  redirect(`/questions${redirectSuffix}` as RedirectPath);
 }
 
 export async function deleteQuestionAction(formData: FormData) {
   await requireAdmin();
-  const redirectSuffix = getUnitRedirectSuffix(formData);
+  const redirectSuffix = getQuestionsRedirectSuffix(formData);
   const id = formData.get("id")?.toString();
   if (!id) {
-    redirect(`/questions${redirectSuffix}`);
+    redirect(`/questions${redirectSuffix}` as RedirectPath);
   }
 
   await deleteQuestion(id);
   revalidatePath("/questions");
-  redirect(`/questions${redirectSuffix}`);
+  redirect(`/questions${redirectSuffix}` as RedirectPath);
 }
 
 export async function saveLookupAction(formData: FormData) {
