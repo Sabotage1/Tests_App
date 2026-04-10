@@ -85,6 +85,38 @@ function appendMany(params: URLSearchParams, name: string, values: string[]) {
 }
 
 type RedirectPath = Parameters<typeof redirect>[0];
+const NEW_TEST_POOL_ERROR_MESSAGE = "אין מספיק שאלות במאגר בשביל ביצוע המשימה.";
+
+function normalizeNewTestErrorMessage(message: string) {
+  return message.includes("אין מספיק שאלות") ? NEW_TEST_POOL_ERROR_MESSAGE : message;
+}
+
+function buildNewTestFormRedirectPath(formData: FormData, errorMessage: string): RedirectPath {
+  const params = new URLSearchParams();
+  const unit = formData.get("unit")?.toString() === "ifr" ? "ifr" : "vfr";
+  const selectionMode = (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered" | "manual";
+
+  params.set("unit", unit);
+  params.set("title", formData.get("title")?.toString() ?? "");
+  params.set("selectionMode", selectionMode);
+  params.set("questionCount", formData.get("questionCount")?.toString() ?? "0");
+  params.set("bonusQuestionCount", formData.get("bonusQuestionCount")?.toString() ?? "0");
+  params.set("durationMinutes", formData.get("durationMinutes")?.toString() ?? "");
+  params.set("sentAt", formData.get("sentAt")?.toString() ?? "");
+  params.set("studentName", formData.get("studentName")?.toString() ?? "");
+  params.set("studentEmail", formData.get("studentEmail")?.toString() ?? "");
+  params.set("error", normalizeNewTestErrorMessage(errorMessage));
+
+  if (formData.get("onlyAnswered")?.toString() === "on") {
+    params.set("onlyAnswered", "1");
+  }
+
+  appendMany(params, "subjectIds", getMany(formData, "subjectIds"));
+  appendMany(params, "stageIds", getMany(formData, "stageIds"));
+  appendMany(params, "questionIds", getMany(formData, "questionIds"));
+
+  return `/tests/new?${params.toString()}` as RedirectPath;
+}
 
 export async function loginAction(formData: FormData) {
   const username = formData.get("username")?.toString() ?? "";
@@ -360,7 +392,7 @@ export async function createTestAction(formData: FormData) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "יצירת המבחן נכשלה";
-    redirect(`/tests/new?unit=${selectedUnit}&error=${encodeURIComponent(message)}`);
+    redirect(buildNewTestFormRedirectPath(formData, message));
   }
 
   revalidatePath("/dashboard");
@@ -434,11 +466,11 @@ export async function prepareTestDraftAction(formData: FormData) {
     redirectPath = `/tests/new/review?${params.toString()}` as RedirectPath;
   } catch (error) {
     const message = error instanceof Error ? error.message : "יצירת טיוטת המבחן נכשלה";
-    redirect(`/tests/new?unit=${unit}&error=${encodeURIComponent(message)}`);
+    redirect(buildNewTestFormRedirectPath(formData, message));
   }
 
   if (!redirectPath) {
-    redirect(`/tests/new?unit=${unit}&error=${encodeURIComponent("יצירת טיוטת המבחן נכשלה")}`);
+    redirect(buildNewTestFormRedirectPath(formData, "יצירת טיוטת המבחן נכשלה"));
   }
 
   redirect(redirectPath);

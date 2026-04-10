@@ -1,16 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { prepareTestDraftAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
 import type { Option, QuestionRow } from "@/lib/types";
 
+export type NewTestFormInitialValues = {
+  title: string;
+  questionCount: string;
+  bonusQuestionCount: string;
+  durationMinutes: string;
+  selectionMode: SelectionMode;
+  studentName: string;
+  studentEmail: string;
+  sentAt: string;
+  subjectIds: string[];
+  stageIds: string[];
+  questionIds: string[];
+};
+
 type NewTestFormProps = {
   activeQuestions: QuestionRow[];
   bonusQuestionPoints: number;
   defaultDurationMinutes: number;
+  initialValues: NewTestFormInitialValues;
   selectedUnit: QuestionUnit;
   stages: Option[];
   subjects: Option[];
@@ -18,17 +33,39 @@ type NewTestFormProps = {
 
 type SelectionMode = "random" | "filtered" | "manual";
 
+function getBrowserLocalDateTimeValue() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 export function NewTestForm({
   activeQuestions,
   bonusQuestionPoints,
   defaultDurationMinutes,
+  initialValues,
   selectedUnit,
   stages,
   subjects,
 }: NewTestFormProps) {
-  const [selectionMode, setSelectionMode] = useState<SelectionMode>("random");
-  const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState<SelectionMode>(initialValues.selectionMode);
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>(initialValues.questionIds);
+  const [sentAtValue, setSentAtValue] = useState(initialValues.sentAt);
   const isManualSelection = selectionMode === "manual";
+
+  useEffect(() => {
+    if (initialValues.sentAt) {
+      setSentAtValue(initialValues.sentAt);
+      return;
+    }
+
+    setSentAtValue(getBrowserLocalDateTimeValue());
+  }, [initialValues.sentAt]);
 
   return (
     <form action={prepareTestDraftAction}>
@@ -36,7 +73,7 @@ export function NewTestForm({
       <div className="grid grid-2">
         <label>
           כותרת מבחן
-          <input name="title" defaultValue="מבחן חדש" required />
+          <input name="title" defaultValue={initialValues.title} required />
         </label>
         <label>
           יחידה
@@ -44,11 +81,11 @@ export function NewTestForm({
         </label>
         <label>
           כמות שאלות
-          <input name="questionCount" type="number" min="1" defaultValue="10" required />
+          <input name="questionCount" type="number" min="1" defaultValue={initialValues.questionCount} required />
         </label>
         <label>
           כמות שאלות בונוס
-          <input name="bonusQuestionCount" type="number" min="0" defaultValue="0" />
+          <input name="bonusQuestionCount" type="number" min="0" defaultValue={initialValues.bonusQuestionCount} />
         </label>
         <label>
           משך זמן בדקות
@@ -56,6 +93,7 @@ export function NewTestForm({
             name="durationMinutes"
             type="number"
             min="0"
+            defaultValue={initialValues.durationMinutes}
             placeholder={`ברירת מחדל: ${defaultDurationMinutes}`}
           />
         </label>
@@ -73,15 +111,23 @@ export function NewTestForm({
         </label>
         <label>
           שם נבחן
-          <input name="studentName" placeholder="אופציונלי" />
+          <input name="studentName" placeholder="אופציונלי" defaultValue={initialValues.studentName} />
         </label>
         <label>
           מייל תלמיד
-          <input name="studentEmail" type="email" placeholder="אופציונלי" />
+          <input name="studentEmail" type="email" placeholder="אופציונלי" defaultValue={initialValues.studentEmail} />
         </label>
         <label>
           תאריך ושעת שליחה
-          <input name="sentAt" type="datetime-local" />
+          <input
+            className="datetime-input-ltr"
+            dir="ltr"
+            lang="en-GB"
+            name="sentAt"
+            onChange={(event) => setSentAtValue(event.target.value)}
+            type="datetime-local"
+            value={sentAtValue}
+          />
         </label>
       </div>
 
@@ -101,7 +147,12 @@ export function NewTestForm({
         <div className="checkbox-grid">
           {subjects.map((subject) => (
             <label className="checkbox-card" key={subject.value}>
-              <input type="checkbox" name="subjectIds" value={subject.value} />
+              <input
+                type="checkbox"
+                name="subjectIds"
+                value={subject.value}
+                defaultChecked={initialValues.subjectIds.includes(subject.value)}
+              />
               {subject.label}
             </label>
           ))}
@@ -113,7 +164,12 @@ export function NewTestForm({
         <div className="checkbox-grid">
           {stages.map((stage) => (
             <label className="checkbox-card" key={stage.value}>
-              <input type="checkbox" name="stageIds" value={stage.value} />
+              <input
+                type="checkbox"
+                name="stageIds"
+                value={stage.value}
+                defaultChecked={initialValues.stageIds.includes(stage.value)}
+              />
               {stage.label}
             </label>
           ))}

@@ -319,6 +319,12 @@ select {
   background: white;
 }
 
+.datetime-input-ltr {
+  direction: ltr;
+  text-align: left;
+  unicode-bidi: plaintext;
+}
+
 textarea {
   min-height: 120px;
   resize: vertical;
