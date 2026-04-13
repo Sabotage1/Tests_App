@@ -302,7 +302,11 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                           <input name="bonusFilter" type="hidden" value={selectedBonusFilter} />
                           <input name="subjectFilter" type="hidden" value={selectedSubjectId} />
                           <input name="stageFilter" type="hidden" value={selectedStageId} />
-                          <SubmitButton className="button button-danger" pendingLabel="מוחק שאלה...">
+                          <SubmitButton
+                            className="button button-danger"
+                            confirmMessage="למחוק את השאלה מהמאגר? פעולה זו מוחקת אותה לצמיתות."
+                            pendingLabel="מוחק שאלה..."
+                          >
                             מחיקה
                           </SubmitButton>
                         </form>
