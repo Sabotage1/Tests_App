@@ -115,3 +115,16 @@ export type DashboardStats = {
   graded: number;
   failed: number;
 };
+
+export type AuditLogEntry = {
+  id: string;
+  actorUserId: string | null;
+  actorDisplayName: string;
+  actorRole: UserRole | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  entityLabel: string | null;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+};

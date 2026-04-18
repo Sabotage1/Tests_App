@@ -1,13 +1,13 @@
 import Link from "next/link";
 
-import { resendArchivedTestAction } from "@/app/actions";
+import { deleteTestAction, resendArchivedTestAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit, type TestStatus } from "@/lib/constants";
 import { getTests } from "@/lib/repository";
 
 type TestLibraryPageProps = {
-  searchParams: Promise<{ error?: string; unit?: string }>;
+  searchParams: Promise<{ deleted?: string; deleteError?: string; error?: string; unit?: string }>;
 };
 
 const STATUS_LABELS: Record<TestStatus, string> = {
@@ -53,6 +53,8 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
         ))}
       </div>
       {params.error ? <div className="alert">{params.error}</div> : null}
+      {params.deleted === "1" ? <div className="alert">המבחן נמחק מהמערכת.</div> : null}
+      {params.deleteError ? <div className="alert">{params.deleteError}</div> : null}
 
       <div className="card">
         <table className="table">
@@ -110,6 +112,15 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
                         שליחה מחדש
                       </SubmitButton>
                     </form>
+                    {user.role === "admin" ? (
+                      <form action={deleteTestAction}>
+                        <input type="hidden" name="testId" value={test.id} />
+                        <input type="hidden" name="unit" value={selectedUnit} />
+                        <SubmitButton className="button button-danger" pendingLabel="מוחק מבחן...">
+                          מחיקת מבחן
+                        </SubmitButton>
+                      </form>
+                    ) : null}
                   </div>
                 </td>
               </tr>

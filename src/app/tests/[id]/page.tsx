@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { QUESTION_UNIT_LABELS } from "@/lib/constants";
 import {
   createShareLinkAction,
+  deleteTestAction,
   sendGradeEmailAction,
   sendTestInvitationEmailAction,
   updateTestDurationAction,
@@ -57,7 +58,7 @@ function formatRoundedGrade(grade: number | null) {
 }
 
 export default async function TestDetailsPage({ params, searchParams }: TestPageProps) {
-  await requireUser();
+  const user = await requireUser();
   const { id } = await params;
   const query = await searchParams;
   const [test, defaultDurationMinutes] = await Promise.all([getTestById(id), getDefaultTestDurationMinutes()]);
@@ -106,6 +107,15 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
           <Link className="button button-secondary" href={`/tests/${test.id}/grade`}>
             {test.status === "graded" ? "צפייה / עריכת בדיקה" : "בדיקה וציונים"}
           </Link>
+          {user.role === "admin" ? (
+            <form action={deleteTestAction}>
+              <input type="hidden" name="testId" value={test.id} />
+              <input type="hidden" name="unit" value={test.unit} />
+              <SubmitButton className="button button-danger" pendingLabel="מוחק מבחן...">
+                מחיקת מבחן
+              </SubmitButton>
+            </form>
+          ) : null}
         </div>
       </div>
 

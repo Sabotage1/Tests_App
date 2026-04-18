@@ -6,14 +6,17 @@ import { redirect } from "next/navigation";
 import { clearSession, createSession, requireAdmin, requireEditor, requireUser } from "@/lib/auth";
 import { gradeTestWithAi } from "@/lib/ai-grading";
 import type { QuestionUnit } from "@/lib/constants";
+import type { User } from "@/lib/types";
 import {
   archiveQuestion,
   authenticateUser,
   changeUserPassword,
   cloneTestForNewStudent,
+  createAuditLog,
   createTest,
   createUser,
   deleteLookup,
+  deleteTest,
   deleteQuestion,
   deleteUser,
   deleteAllTests,
@@ -22,6 +25,8 @@ import {
   gradeTest,
   getDefaultTestDurationMinutes,
   getBonusQuestionPoints,
+  getQuestionById,
+  getTestById,
   getTestDraftQuestions,
   sendGradeEmail,
   sendReviewNotificationEmails,
@@ -86,6 +91,7 @@ function appendMany(params: URLSearchParams, name: string, values: string[]) {
 
 type RedirectPath = Parameters<typeof redirect>[0];
 const NEW_TEST_POOL_ERROR_MESSAGE = "אין מספיק שאלות במאגר בשביל ביצוע המשימה.";
+type AuditActor = Pick<User, "id" | "displayName" | "role">;
 
 function normalizeNewTestErrorMessage(message: string) {
   return message.includes("אין מספיק שאלות") ? NEW_TEST_POOL_ERROR_MESSAGE : message;
@@ -118,6 +124,60 @@ function buildNewTestFormRedirectPath(formData: FormData, errorMessage: string):
   return `/tests/new?${params.toString()}` as RedirectPath;
 }
 
+function buildTestsLibraryRedirectPath(unit: string | undefined, extra?: string): RedirectPath {
+  const selectedUnit = unit === "ifr" ? "ifr" : "vfr";
+  const suffix = extra ? `&${extra}` : "";
+  return `/tests/library?unit=${selectedUnit}${suffix}` as RedirectPath;
+}
+
+function revalidateTestCollections() {
+  revalidatePath("/dashboard");
+  revalidatePath("/tests/library");
+  revalidatePath("/tests/archive");
+  revalidatePath("/tests/review");
+  revalidatePath("/tests/graded");
+}
+
+async function logUserAudit(
+  user: AuditActor,
+  input: {
+    action: string;
+    entityType: string;
+    entityId?: string | null;
+    entityLabel?: string | null;
+    details?: Record<string, unknown> | null;
+  },
+) {
+  await createAuditLog({
+    actorUserId: user.id,
+    actorDisplayName: user.displayName,
+    actorRole: user.role,
+    ...input,
+  });
+  revalidatePath("/admin/logs");
+}
+
+async function logAudit(input: {
+  actorDisplayName: string;
+  actorRole?: AuditActor["role"] | null;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  entityLabel?: string | null;
+  details?: Record<string, unknown> | null;
+}) {
+  await createAuditLog({
+    actorDisplayName: input.actorDisplayName,
+    actorRole: input.actorRole ?? null,
+    action: input.action,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    entityLabel: input.entityLabel,
+    details: input.details,
+  });
+  revalidatePath("/admin/logs");
+}
+
 export async function loginAction(formData: FormData) {
   const username = formData.get("username")?.toString() ?? "";
   const password = formData.get("password")?.toString() ?? "";
@@ -137,12 +197,11 @@ export async function logoutAction() {
 }
 
 export async function saveQuestionAction(formData: FormData) {
-  await requireEditor();
-
+  const user = await requireEditor();
   const id = formData.get("id")?.toString() || null;
   const redirectSuffix = getQuestionsRedirectSuffix(formData);
   try {
-    await upsertQuestion({
+    const questionId = await upsertQuestion({
       id,
       text: formData.get("text")?.toString() ?? "",
       answer: formData.get("answer")?.toString() ?? "",
@@ -154,6 +213,21 @@ export async function saveQuestionAction(formData: FormData) {
       subjectIds: getMany(formData, "subjectIds"),
       stageIds: getMany(formData, "stageIds"),
     });
+    const savedQuestion = await getQuestionById(questionId);
+    await logUserAudit(user, {
+      action: id ? "question.updated" : "question.created",
+      entityType: "question",
+      entityId: questionId,
+      entityLabel: savedQuestion?.sourceReference ?? savedQuestion?.text.slice(0, 80) ?? null,
+      details: savedQuestion
+        ? {
+            unit: savedQuestion.unit,
+            source: savedQuestion.source,
+            sourceReference: savedQuestion.sourceReference,
+            isBonusSource: savedQuestion.isBonusSource,
+          }
+        : null,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "שמירת השאלה נכשלה";
     redirect(`/questions${redirectSuffix}&error=${encodeURIComponent(message)}` as RedirectPath);
@@ -164,33 +238,61 @@ export async function saveQuestionAction(formData: FormData) {
 }
 
 export async function archiveQuestionAction(formData: FormData) {
-  await requireAdmin();
+  const user = await requireAdmin();
   const redirectSuffix = getQuestionsRedirectSuffix(formData);
   const id = formData.get("id")?.toString();
   if (!id) {
     redirect(`/questions${redirectSuffix}` as RedirectPath);
   }
 
+  const question = await getQuestionById(id);
   await archiveQuestion(id);
+  await logUserAudit(user, {
+    action: "question.archived",
+    entityType: "question",
+    entityId: id,
+    entityLabel: question?.sourceReference ?? question?.text.slice(0, 80) ?? null,
+    details: question
+      ? {
+          unit: question.unit,
+          source: question.source,
+          sourceReference: question.sourceReference,
+        }
+      : null,
+  });
   revalidatePath("/questions");
   redirect(`/questions${redirectSuffix}` as RedirectPath);
 }
 
 export async function deleteQuestionAction(formData: FormData) {
-  await requireAdmin();
+  const user = await requireAdmin();
   const redirectSuffix = getQuestionsRedirectSuffix(formData);
   const id = formData.get("id")?.toString();
   if (!id) {
     redirect(`/questions${redirectSuffix}` as RedirectPath);
   }
 
+  const question = await getQuestionById(id);
   await deleteQuestion(id);
+  await logUserAudit(user, {
+    action: "question.deleted",
+    entityType: "question",
+    entityId: id,
+    entityLabel: question?.sourceReference ?? question?.text.slice(0, 80) ?? null,
+    details: question
+      ? {
+          unit: question.unit,
+          source: question.source,
+          sourceReference: question.sourceReference,
+        }
+      : null,
+  });
   revalidatePath("/questions");
   redirect(`/questions${redirectSuffix}` as RedirectPath);
 }
 
 export async function saveLookupAction(formData: FormData) {
-  await requireEditor();
+  const user = await requireEditor();
   const type = formData.get("type")?.toString();
   const name = formData.get("name")?.toString() ?? "";
   const id = formData.get("id")?.toString() || null;
@@ -201,7 +303,17 @@ export async function saveLookupAction(formData: FormData) {
   }
 
   try {
-    await upsertLookup(type, id, name, lookupUnit);
+    const savedLookup = await upsertLookup(type, id, name, lookupUnit);
+    await logUserAudit(user, {
+      action: id ? "lookup.updated" : "lookup.created",
+      entityType: "lookup",
+      entityId: savedLookup?.id ?? null,
+      entityLabel: savedLookup?.name ?? name.trim(),
+      details: {
+        lookupType: type,
+        unit: savedLookup?.unit ?? lookupUnit,
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "שמירת הערך נכשלה";
     redirect(getLookupSettingsRedirect(formData, `lookupError=${encodeURIComponent(message)}`));
@@ -214,7 +326,7 @@ export async function saveLookupAction(formData: FormData) {
 }
 
 export async function deleteLookupAction(formData: FormData) {
-  await requireAdmin();
+  const user = await requireAdmin();
   const type = formData.get("type")?.toString();
   const id = formData.get("id")?.toString();
 
@@ -222,7 +334,17 @@ export async function deleteLookupAction(formData: FormData) {
     redirect("/settings");
   }
 
-  await deleteLookup(type, id);
+  const deletedLookup = await deleteLookup(type, id);
+  await logUserAudit(user, {
+    action: "lookup.deleted",
+    entityType: "lookup",
+    entityId: deletedLookup?.id ?? id,
+    entityLabel: deletedLookup?.name ?? null,
+    details: {
+      lookupType: type,
+      unit: deletedLookup?.unit ?? formData.get("lookupUnit")?.toString() ?? null,
+    },
+  });
   revalidatePath("/settings");
   revalidatePath("/questions");
   revalidatePath("/tests/new");
@@ -230,10 +352,10 @@ export async function deleteLookupAction(formData: FormData) {
 }
 
 export async function saveUserAction(formData: FormData) {
-  await requireAdmin();
+  const user = await requireAdmin();
 
   try {
-    await createUser({
+    const savedUser = await createUser({
       username: formData.get("username")?.toString() ?? "",
       displayName: formData.get("displayName")?.toString() ?? "",
       email: formData.get("email")?.toString() ?? "",
@@ -241,6 +363,17 @@ export async function saveUserAction(formData: FormData) {
       reviewNotificationsEnabled: formData.get("reviewNotificationsEnabled")?.toString() === "on",
       units: getMany(formData, "units") as QuestionUnit[],
       password: formData.get("password")?.toString() ?? "",
+    });
+    await logUserAudit(user, {
+      action: "user.created",
+      entityType: "user",
+      entityId: savedUser.id,
+      entityLabel: savedUser.displayName,
+      details: {
+        username: savedUser.username,
+        role: savedUser.role,
+        units: savedUser.units,
+      },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "שמירת המשתמש נכשלה";
@@ -256,9 +389,19 @@ export async function deleteUserAction(formData: FormData) {
   const id = formData.get("id")?.toString() ?? "";
 
   try {
-    await deleteUser({
+    const deletedUser = await deleteUser({
       id,
       actingUserId: currentUser.id,
+    });
+    await logUserAudit(currentUser, {
+      action: "user.deleted",
+      entityType: "user",
+      entityId: deletedUser.id,
+      entityLabel: deletedUser.displayName,
+      details: {
+        username: deletedUser.username,
+        role: deletedUser.role,
+      },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "מחיקת המשתמש נכשלה";
@@ -270,30 +413,71 @@ export async function deleteUserAction(formData: FormData) {
 }
 
 export async function deleteAllTestsAction(formData: FormData) {
-  await requireAdmin();
+  const user = await requireAdmin();
   const confirmation = formData.get("confirmation")?.toString().trim() ?? "";
 
   if (confirmation !== "מחק הכל") {
     redirect("/settings?testsClearError=1");
   }
 
-  await deleteAllTests();
+  const deletedCount = await deleteAllTests();
+  await logUserAudit(user, {
+    action: "test.bulk_deleted",
+    entityType: "test",
+    entityLabel: "כל המבחנים",
+    details: {
+      deletedCount,
+    },
+  });
 
-  revalidatePath("/dashboard");
-  revalidatePath("/tests/library");
-  revalidatePath("/tests/archive");
-  revalidatePath("/tests/review");
-  revalidatePath("/tests/graded");
+  revalidateTestCollections();
   revalidatePath("/tests/new");
   revalidatePath("/settings");
   redirect("/settings?testsCleared=1");
 }
 
-export async function updateUserAction(formData: FormData) {
-  await requireAdmin();
+export async function deleteTestAction(formData: FormData) {
+  const user = await requireAdmin();
+  const testId = formData.get("testId")?.toString() ?? "";
+  const unit = formData.get("unit")?.toString();
+
+  if (!testId) {
+    redirect(buildTestsLibraryRedirectPath(unit));
+  }
 
   try {
-    await updateUser({
+    const deletedTest = await deleteTest(testId);
+    await logUserAudit(user, {
+      action: "test.deleted",
+      entityType: "test",
+      entityId: deletedTest.id,
+      entityLabel: deletedTest.title,
+      details: {
+        unit: deletedTest.unit,
+        status: deletedTest.status,
+        studentName: deletedTest.studentName,
+        studentEmail: deletedTest.studentEmail,
+      },
+    });
+
+    revalidateTestCollections();
+    revalidatePath(`/tests/${testId}`);
+    if (deletedTest.shareToken) {
+      revalidatePath(`/share/${deletedTest.shareToken}`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "מחיקת המבחן נכשלה";
+    redirect(buildTestsLibraryRedirectPath(unit, `deleteError=${encodeURIComponent(message)}`));
+  }
+
+  redirect(buildTestsLibraryRedirectPath(unit, "deleted=1"));
+}
+
+export async function updateUserAction(formData: FormData) {
+  const user = await requireAdmin();
+
+  try {
+    const savedUser = await updateUser({
       id: formData.get("id")?.toString() ?? "",
       username: formData.get("username")?.toString() ?? "",
       displayName: formData.get("displayName")?.toString() ?? "",
@@ -302,6 +486,18 @@ export async function updateUserAction(formData: FormData) {
       reviewNotificationsEnabled: formData.get("reviewNotificationsEnabled")?.toString() === "on",
       units: getMany(formData, "units") as QuestionUnit[],
       password: formData.get("password")?.toString() ?? "",
+    });
+    await logUserAudit(user, {
+      action: "user.updated",
+      entityType: "user",
+      entityId: savedUser.id,
+      entityLabel: savedUser.displayName,
+      details: {
+        username: savedUser.username,
+        role: savedUser.role,
+        units: savedUser.units,
+        passwordReset: Boolean(formData.get("password")?.toString()?.trim()),
+      },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "עדכון המשתמש נכשל";
@@ -333,30 +529,54 @@ export async function changeOwnPasswordAction(formData: FormData) {
   }
 
   revalidatePath("/settings");
+  await logUserAudit(user, {
+    action: "user.password_changed",
+    entityType: "user",
+    entityId: user.id,
+    entityLabel: user.displayName,
+  });
   redirect("/settings?passwordSaved=1");
 }
 
 export async function saveDefaultDurationAction(formData: FormData) {
-  await requireEditor();
+  const user = await requireEditor();
 
   const rawValue = formData.get("defaultDurationMinutes")?.toString().trim() ?? "";
   const currentDefault = await getDefaultTestDurationMinutes();
   const durationMinutes = rawValue === "" ? currentDefault : Number(rawValue);
 
   await setDefaultTestDurationMinutes(Number.isNaN(durationMinutes) ? currentDefault : durationMinutes);
+  await logUserAudit(user, {
+    action: "settings.default_duration_updated",
+    entityType: "settings",
+    entityId: "default_test_duration_minutes",
+    entityLabel: "ברירת מחדל למשך מבחן",
+    details: {
+      value: Number.isNaN(durationMinutes) ? currentDefault : durationMinutes,
+    },
+  });
   revalidatePath("/settings");
   revalidatePath("/tests/new");
   redirect("/settings?durationSaved=1");
 }
 
 export async function saveBonusQuestionPointsAction(formData: FormData) {
-  await requireAdmin();
+  const user = await requireAdmin();
 
   const rawValue = formData.get("bonusQuestionPoints")?.toString().trim() ?? "";
   const currentValue = await getBonusQuestionPoints();
   const points = rawValue === "" ? currentValue : Number(rawValue);
 
   await setBonusQuestionPoints(Number.isNaN(points) ? currentValue : points);
+  await logUserAudit(user, {
+    action: "settings.bonus_points_updated",
+    entityType: "settings",
+    entityId: "bonus_question_points",
+    entityLabel: "שווי שאלת בונוס",
+    details: {
+      value: Number.isNaN(points) ? currentValue : points,
+    },
+  });
   revalidatePath("/settings");
   revalidatePath("/tests/new");
   revalidatePath("/tests/new/review");
@@ -389,6 +609,20 @@ export async function createTestAction(formData: FormData) {
       bonusSelectedQuestionIds: getMany(formData, "bonusSelectedQuestionIds"),
       studentName: formData.get("studentName")?.toString() ?? "",
       studentEmail: formData.get("studentEmail")?.toString() ?? "",
+    });
+    const test = await getTestById(id);
+    await logUserAudit(user, {
+      action: "test.created",
+      entityType: "test",
+      entityId: id,
+      entityLabel: test?.title ?? formData.get("title")?.toString() ?? null,
+      details: {
+        unit: test?.unit ?? selectedUnit,
+        selectionMode: formData.get("selectionMode")?.toString() ?? "random",
+        questionCount: test?.questionCount ?? null,
+        studentName: test?.studentName ?? formData.get("studentName")?.toString() ?? null,
+        studentEmail: test?.studentEmail ?? formData.get("studentEmail")?.toString() ?? null,
+      },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "יצירת המבחן נכשלה";
@@ -477,10 +711,22 @@ export async function prepareTestDraftAction(formData: FormData) {
 }
 
 export async function createShareLinkAction(formData: FormData) {
-  await requireEditor();
+  const user = await requireEditor();
   const id = formData.get("id")?.toString() ?? "";
-  await ensureShareToken(id);
+  const shareToken = await ensureShareToken(id);
+  const test = await getTestById(id);
+  await logUserAudit(user, {
+    action: "test.share_link_created",
+    entityType: "test",
+    entityId: id,
+    entityLabel: test?.title ?? null,
+    details: {
+      shareToken,
+      unit: test?.unit ?? null,
+    },
+  });
   revalidatePath(`/tests/${id}`);
+  revalidatePath(`/share/${shareToken}`);
   revalidatePath("/dashboard");
   redirect(`/tests/${id}`);
 }
@@ -499,7 +745,21 @@ export async function resendArchivedTestAction(formData: FormData) {
       sentAt: formData.get("sentAt")?.toString() ?? "",
     });
 
-    await ensureShareToken(newTestId);
+    const shareToken = await ensureShareToken(newTestId);
+    const [newTest, sourceTest] = await Promise.all([getTestById(newTestId), getTestById(sourceTestId)]);
+    await logUserAudit(user, {
+      action: "test.cloned",
+      entityType: "test",
+      entityId: newTestId,
+      entityLabel: newTest?.title ?? null,
+      details: {
+        sourceTestId,
+        sourceTitle: sourceTest?.title ?? null,
+        shareToken,
+        studentName: newTest?.studentName ?? formData.get("studentName")?.toString() ?? null,
+        studentEmail: newTest?.studentEmail ?? formData.get("studentEmail")?.toString() ?? null,
+      },
+    });
     revalidatePath("/tests/archive");
     revalidatePath("/tests/library");
     revalidatePath("/dashboard");
@@ -512,7 +772,7 @@ export async function resendArchivedTestAction(formData: FormData) {
 }
 
 export async function updateTestDurationAction(formData: FormData) {
-  await requireEditor();
+  const user = await requireEditor();
   const testId = formData.get("testId")?.toString() ?? "";
   const shareToken = formData.get("shareToken")?.toString() ?? "";
   const rawValue = formData.get("durationMinutes")?.toString().trim() ?? "";
@@ -520,6 +780,16 @@ export async function updateTestDurationAction(formData: FormData) {
   await updateTestDuration({
     testId,
     durationMinutes: rawValue === "" ? undefined : Number(rawValue),
+  });
+  const test = await getTestById(testId);
+  await logUserAudit(user, {
+    action: "test.duration_updated",
+    entityType: "test",
+    entityId: testId,
+    entityLabel: test?.title ?? null,
+    details: {
+      durationMinutes: test?.durationMinutes ?? null,
+    },
   });
 
   revalidatePath(`/tests/${testId}`);
@@ -531,8 +801,9 @@ export async function updateTestDurationAction(formData: FormData) {
 
 export async function startSharedTestAction(formData: FormData) {
   const token = formData.get("token")?.toString() ?? "";
+  let testId = "";
   try {
-    await startTestByToken(
+    testId = await startTestByToken(
       token,
       formData.get("studentName")?.toString() ?? "",
       formData.get("studentEmail")?.toString() ?? "",
@@ -540,6 +811,24 @@ export async function startSharedTestAction(formData: FormData) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "התחלת המבחן נכשלה";
     redirect(`/share/${token}?error=${encodeURIComponent(message)}`);
+  }
+
+  if (testId) {
+    const test = await getTestById(testId);
+    await logAudit({
+      actorDisplayName:
+        formData.get("studentName")?.toString().trim() ||
+        formData.get("studentEmail")?.toString().trim() ||
+        "נבחן/ת בקישור שיתוף",
+      action: "test.started",
+      entityType: "test",
+      entityId: testId,
+      entityLabel: test?.title ?? null,
+      details: {
+        studentName: test?.studentName ?? formData.get("studentName")?.toString() ?? null,
+        studentEmail: test?.studentEmail ?? formData.get("studentEmail")?.toString() ?? null,
+      },
+    });
   }
 
   redirect(`/share/${token}`);
@@ -572,6 +861,23 @@ export async function submitSharedTestAction(formData: FormData) {
   revalidatePath("/tests/library");
   if (testId) {
     revalidatePath(`/tests/${testId}`);
+    const submittedTest = await getTestById(testId);
+    await logAudit({
+      actorDisplayName:
+        submittedTest?.studentName ||
+        formData.get("studentName")?.toString().trim() ||
+        submittedTest?.studentEmail ||
+        formData.get("studentEmail")?.toString().trim() ||
+        "נבחן/ת בקישור שיתוף",
+      action: "test.submitted",
+      entityType: "test",
+      entityId: testId,
+      entityLabel: submittedTest?.title ?? null,
+      details: {
+        studentName: submittedTest?.studentName ?? null,
+        studentEmail: submittedTest?.studentEmail ?? null,
+      },
+    });
     try {
       await sendReviewNotificationEmails(testId);
     } catch (error) {
@@ -599,6 +905,16 @@ export async function gradeTestAction(formData: FormData) {
     gradingNotes: formData.get("gradingNotes")?.toString() ?? "",
     grades,
   });
+  await logUserAudit(user, {
+    action: "test.graded",
+    entityType: "test",
+    entityId: testId,
+    entityLabel: gradedTest.title,
+    details: {
+      grade: gradedTest.grade,
+      questionCount: gradedTest.questionCount,
+    },
+  });
 
   revalidatePath(`/tests/${testId}`);
   revalidatePath("/tests/graded");
@@ -621,6 +937,16 @@ export async function gradeTestWithAiAction(formData: FormData) {
 
   try {
     await gradeTestWithAi(testId, user.displayName);
+    const gradedTest = await getTestById(testId);
+    await logUserAudit(user, {
+      action: "test.graded_with_ai",
+      entityType: "test",
+      entityId: testId,
+      entityLabel: gradedTest?.title ?? null,
+      details: {
+        grade: gradedTest?.grade ?? null,
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "בדיקת AI נכשלה";
     redirect(`/tests/${testId}/grade?aiError=${encodeURIComponent(message)}`);
@@ -632,12 +958,22 @@ export async function gradeTestWithAiAction(formData: FormData) {
 }
 
 export async function sendGradeEmailAction(formData: FormData) {
-  await requireEditor();
+  const user = await requireEditor();
   const testId = formData.get("testId")?.toString() ?? "";
 
   let redirectPath = `/tests/${testId}?mail=sent` as RedirectPath;
   try {
     await sendGradeEmail(testId);
+    const test = await getTestById(testId);
+    await logUserAudit(user, {
+      action: "test.grade_email_sent",
+      entityType: "test",
+      entityId: testId,
+      entityLabel: test?.title ?? null,
+      details: {
+        studentEmail: test?.studentEmail ?? null,
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "שליחת המייל נכשלה";
     redirectPath = `/tests/${testId}?mailError=${encodeURIComponent(message)}` as RedirectPath;
@@ -647,12 +983,22 @@ export async function sendGradeEmailAction(formData: FormData) {
 }
 
 export async function sendTestInvitationEmailAction(formData: FormData) {
-  await requireEditor();
+  const user = await requireEditor();
   const testId = formData.get("testId")?.toString() ?? "";
 
   let redirectPath = `/tests/${testId}?inviteMail=sent` as RedirectPath;
   try {
     await sendTestInvitationEmail(testId);
+    const test = await getTestById(testId);
+    await logUserAudit(user, {
+      action: "test.invitation_email_sent",
+      entityType: "test",
+      entityId: testId,
+      entityLabel: test?.title ?? null,
+      details: {
+        studentEmail: test?.studentEmail ?? null,
+      },
+    });
     revalidatePath(`/tests/${testId}`);
     revalidatePath("/dashboard");
   } catch (error) {

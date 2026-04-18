@@ -509,6 +509,26 @@ textarea {
   color: #7f5a00;
 }
 
+.audit-log-id {
+  margin-top: 6px;
+  font-family: ui-monospace, "SFMono-Regular", "SF Mono", Consolas, monospace;
+  font-size: 0.82rem;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.audit-log-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.audit-log-detail {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .timer {
   display: inline-flex;
   align-items: center;

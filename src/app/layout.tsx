@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { Route } from "next";
 import Link from "next/link";
 
 import { logoutAction } from "@/app/actions";
@@ -89,6 +90,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <span>הגדרות</span>
             </span>
           </Link>
+          {currentUser.role === "admin" ? (
+            <Link href={"/admin/logs" as Route}>
+              <span className="nav-link-content">
+                <span>יומן פעילות</span>
+              </span>
+            </Link>
+          ) : null}
         </nav>
         <form action={logoutAction}>
           <SubmitButton className="button button-secondary" pendingLabel="מתנתק...">

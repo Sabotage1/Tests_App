@@ -10,9 +10,19 @@ import {
   MISSING_ANSWER_TEXT,
   QUESTION_UNITS,
   type QuestionUnit,
+  type UserRole,
 } from "@/lib/constants";
 import { query, withTransaction } from "@/lib/db";
-import type { DashboardStats, Option, QuestionRow, TestBuilderQuestion, TestDetails, TestListItem, User } from "@/lib/types";
+import type {
+  AuditLogEntry,
+  DashboardStats,
+  Option,
+  QuestionRow,
+  TestBuilderQuestion,
+  TestDetails,
+  TestListItem,
+  User,
+} from "@/lib/types";
 
 type UserRow = {
   id: string;
@@ -49,6 +59,15 @@ function formatArray(values: string[] | null | undefined) {
   return values ?? [];
 }
 
+function normalizeAuditDetails(details: Record<string, unknown> | null | undefined) {
+  if (!details) {
+    return null;
+  }
+
+  const normalizedEntries = Object.entries(details).filter(([, value]) => value !== undefined);
+  return normalizedEntries.length > 0 ? Object.fromEntries(normalizedEntries) : null;
+}
+
 function normalizeDistinctIds(values: string[] | null | undefined) {
   return Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
 }
@@ -76,6 +95,107 @@ function getScoredQuestionCount(questions: Array<{ isBonus: boolean }>) {
   return regularCount > 0 ? regularCount : questions.length;
 }
 
+export async function createAuditLog(input: CreateAuditLogInput) {
+  await query(
+    `
+      INSERT INTO audit_logs (
+        id,
+        actor_user_id,
+        actor_display_name,
+        actor_role,
+        action,
+        entity_type,
+        entity_id,
+        entity_label,
+        details,
+        created_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+    `,
+    [
+      nanoid(),
+      input.actorUserId ?? null,
+      input.actorDisplayName.trim(),
+      input.actorRole ?? null,
+      input.action,
+      input.entityType,
+      input.entityId ?? null,
+      input.entityLabel?.trim() || null,
+      normalizeAuditDetails(input.details),
+    ],
+  );
+}
+
+export async function getAuditLogs(input?: {
+  entityType?: string;
+  action?: string;
+  limit?: number;
+}) {
+  const conditions: string[] = [];
+  const values: unknown[] = [];
+
+  if (input?.entityType) {
+    values.push(input.entityType);
+    conditions.push(`entity_type = $${values.length}`);
+  }
+
+  if (input?.action) {
+    values.push(input.action);
+    conditions.push(`action = $${values.length}`);
+  }
+
+  values.push(Math.max(1, Math.min(input?.limit ?? 200, 500)));
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const result = await query<{
+    id: string;
+    actor_user_id: string | null;
+    actor_display_name: string;
+    actor_role: UserRole | null;
+    action: string;
+    entity_type: string;
+    entity_id: string | null;
+    entity_label: string | null;
+    details: Record<string, unknown> | null;
+    created_at: string;
+  }>(
+    `
+      SELECT
+        id,
+        actor_user_id,
+        actor_display_name,
+        actor_role,
+        action,
+        entity_type,
+        entity_id,
+        entity_label,
+        details,
+        created_at::text
+      FROM audit_logs
+      ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT $${values.length}
+    `,
+    values,
+  );
+
+  return result.rows.map(
+    (row) =>
+      ({
+        id: row.id,
+        actorUserId: row.actor_user_id,
+        actorDisplayName: row.actor_display_name,
+        actorRole: row.actor_role,
+        action: row.action,
+        entityType: row.entity_type,
+        entityId: row.entity_id,
+        entityLabel: row.entity_label,
+        details: row.details,
+        createdAt: row.created_at,
+      }) satisfies AuditLogEntry,
+  );
+}
+
 function mapTestBuilderQuestion(row: QuestionSelectionRow): TestBuilderQuestion {
   return {
     id: row.id,
@@ -94,6 +214,17 @@ function mapTestBuilderQuestion(row: QuestionSelectionRow): TestBuilderQuestion 
 }
 
 type QueryFn = <T extends QueryResultRow>(text: string, values?: unknown[]) => Promise<{ rows: T[] }>;
+
+type CreateAuditLogInput = {
+  actorUserId?: string | null;
+  actorDisplayName: string;
+  actorRole?: UserRole | null;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  entityLabel?: string | null;
+  details?: Record<string, unknown> | null;
+};
 
 type QuestionSelectionRow = {
   id: string;
@@ -284,7 +415,8 @@ export async function setBonusQuestionPoints(points: number) {
 }
 
 export async function deleteAllTests() {
-  await query("DELETE FROM tests");
+  const result = await query<{ id: string }>("DELETE FROM tests RETURNING id");
+  return result.rows.length;
 }
 
 export async function getPendingReviewCount() {
@@ -441,12 +573,18 @@ export async function createUser(input: {
     throw new Error("יש לבחור לפחות יחידה אחת למשתמש.");
   }
 
-  await query(
+  const result = await query<{
+    id: string;
+    username: string;
+    display_name: string;
+    role: "admin" | "editor" | "viewer";
+  }>(
     `
       INSERT INTO users (
         id, username, display_name, email, role, review_notifications_enabled, units, password_hash, created_at
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+      RETURNING id, username, display_name, role
     `,
     [
       nanoid(),
@@ -459,6 +597,14 @@ export async function createUser(input: {
       bcrypt.hashSync(input.password, 10),
     ],
   );
+
+  return {
+    id: result.rows[0].id,
+    username: result.rows[0].username,
+    displayName: result.rows[0].display_name,
+    role: result.rows[0].role,
+    units: normalizedUnits,
+  };
 }
 
 export async function deleteUser(input: { id: string; actingUserId: string }) {
@@ -466,8 +612,13 @@ export async function deleteUser(input: { id: string; actingUserId: string }) {
     throw new Error("לא ניתן למחוק את המשתמש שמחובר כרגע.");
   }
 
-  const userResult = await query<{ role: "admin" | "editor" | "viewer" }>(
-    "SELECT role FROM users WHERE id = $1",
+  const userResult = await query<{
+    id: string;
+    username: string;
+    display_name: string;
+    role: "admin" | "editor" | "viewer";
+  }>(
+    "SELECT id, username, display_name, role FROM users WHERE id = $1",
     [input.id],
   );
   const user = userResult.rows[0];
@@ -494,6 +645,13 @@ export async function deleteUser(input: { id: string; actingUserId: string }) {
   }
 
   await query("DELETE FROM users WHERE id = $1", [input.id]);
+
+  return {
+    id: user.id,
+    username: user.username,
+    displayName: user.display_name,
+    role: user.role,
+  };
 }
 
 export async function updateUser(input: {
@@ -512,7 +670,12 @@ export async function updateUser(input: {
   }
 
   if (input.password?.trim()) {
-    await query(
+    const result = await query<{
+      id: string;
+      username: string;
+      display_name: string;
+      role: "admin" | "editor" | "viewer";
+    }>(
       `
         UPDATE users
         SET username = $1,
@@ -523,6 +686,7 @@ export async function updateUser(input: {
             units = $6,
             password_hash = $7
         WHERE id = $8
+        RETURNING id, username, display_name, role
       `,
       [
         input.username.trim().toLowerCase(),
@@ -535,10 +699,22 @@ export async function updateUser(input: {
         input.id,
       ],
     );
-    return;
+
+    return {
+      id: result.rows[0].id,
+      username: result.rows[0].username,
+      displayName: result.rows[0].display_name,
+      role: result.rows[0].role,
+      units: normalizedUnits,
+    };
   }
 
-  await query(
+  const result = await query<{
+    id: string;
+    username: string;
+    display_name: string;
+    role: "admin" | "editor" | "viewer";
+  }>(
     `
       UPDATE users
       SET username = $1,
@@ -548,6 +724,7 @@ export async function updateUser(input: {
           review_notifications_enabled = $5,
           units = $6
       WHERE id = $7
+      RETURNING id, username, display_name, role
     `,
     [
       input.username.trim().toLowerCase(),
@@ -559,6 +736,14 @@ export async function updateUser(input: {
       input.id,
     ],
   );
+
+  return {
+    id: result.rows[0].id,
+    username: result.rows[0].username,
+    displayName: result.rows[0].display_name,
+    role: result.rows[0].role,
+    units: normalizedUnits,
+  };
 }
 
 export async function changeUserPassword(input: {
@@ -609,22 +794,44 @@ export async function upsertLookup(
   }
 
   if (id) {
-    await query(`UPDATE ${type} SET name = $1, unit = $2, updated_at = NOW() WHERE id = $3`, [normalizedName, unit, id]);
-    return;
+    const result = await query<{ id: string; name: string; unit: QuestionUnit }>(
+      `UPDATE ${type} SET name = $1, unit = $2, updated_at = NOW() WHERE id = $3 RETURNING id, name, unit`,
+      [normalizedName, unit, id],
+    );
+
+    return {
+      id: result.rows[0].id,
+      name: result.rows[0].name,
+      unit: result.rows[0].unit,
+      isNew: false,
+    };
   }
 
-  await query(
+  const result = await query<{ id: string; name: string; unit: QuestionUnit }>(
     `
       INSERT INTO ${type} (id, name, unit, created_at, updated_at)
       VALUES ($1, $2, $3, NOW(), NOW())
       ON CONFLICT (name, unit) DO NOTHING
+      RETURNING id, name, unit
     `,
     [nanoid(), normalizedName, unit],
   );
+
+  return {
+    id: result.rows[0]?.id ?? existing?.id ?? null,
+    name: result.rows[0]?.name ?? normalizedName,
+    unit: result.rows[0]?.unit ?? unit,
+    isNew: true,
+  };
 }
 
 export async function deleteLookup(type: "subjects" | "stages", id: string) {
-  await query(`DELETE FROM ${type} WHERE id = $1`, [id]);
+  const result = await query<{ id: string; name: string; unit: QuestionUnit }>(
+    `DELETE FROM ${type} WHERE id = $1 RETURNING id, name, unit`,
+    [id],
+  );
+
+  return result.rows[0] ?? null;
 }
 
 async function getQuestionPoolsForTestBuilder(input: {
@@ -1136,6 +1343,45 @@ export async function getTests() {
   }));
 }
 
+export async function deleteTest(id: string) {
+  return withTransaction(async (client) => {
+    const existingResult = await client.query<{
+      id: string;
+      title: string;
+      unit: QuestionUnit;
+      share_token: string | null;
+      status: TestListItem["status"];
+      student_name: string | null;
+      student_email: string | null;
+    }>(
+      `
+        SELECT id, title, unit, share_token, status, student_name, student_email
+        FROM tests
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [id],
+    );
+
+    const test = existingResult.rows[0];
+    if (!test) {
+      throw new Error("המבחן לא נמצא.");
+    }
+
+    await client.query("DELETE FROM tests WHERE id = $1", [id]);
+
+    return {
+      id: test.id,
+      title: test.title,
+      unit: test.unit,
+      shareToken: test.share_token,
+      status: test.status,
+      studentName: test.student_name,
+      studentEmail: test.student_email,
+    };
+  });
+}
+
 export async function createTest(input: {
   title: string;
   createdBy: string;
@@ -1520,6 +1766,8 @@ export async function startTestByToken(token: string, studentName?: string, stud
   if (result.rowCount === 0) {
     throw new Error("לא ניתן להתחיל מבחן שכבר הוגש או נבדק.");
   }
+
+  return result.rows[0]?.id as string;
 }
 
 export async function submitTestByToken(input: {
