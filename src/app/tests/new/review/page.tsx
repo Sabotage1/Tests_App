@@ -28,6 +28,56 @@ function getOptionalUnitValue(value: string | string[] | undefined) {
   return normalized === "ifr" || normalized === "vfr" ? normalized : undefined;
 }
 
+function buildBackHref(params: Record<string, string | string[] | undefined>, unit: QuestionUnit) {
+  const nextParams = new URLSearchParams();
+  nextParams.set("unit", unit);
+  nextParams.set("title", getSingleValue(params.title));
+  nextParams.set("selectionMode", getSingleValue(params.selectionMode));
+  nextParams.set("questionCount", getSingleValue(params.questionCount));
+  nextParams.set("bonusQuestionCount", getSingleValue(params.bonusQuestionCount));
+  nextParams.set("durationMinutes", getSingleValue(params.durationMinutes));
+  nextParams.set("recipientMode", getSingleValue(params.recipientMode));
+  nextParams.set("recipientData", getSingleValue(params.recipientData));
+  nextParams.set("sentAt", getSingleValue(params.sentAt));
+  nextParams.set("studentName", getSingleValue(params.studentName));
+  nextParams.set("studentEmail", getSingleValue(params.studentEmail));
+
+  if (getSingleValue(params.onlyAnswered) === "1") {
+    nextParams.set("onlyAnswered", "1");
+  }
+
+  for (const subjectId of getManyValues(params.subjectIds)) {
+    nextParams.append("subjectIds", subjectId);
+  }
+
+  for (const stageId of getManyValues(params.stageIds)) {
+    nextParams.append("stageIds", stageId);
+  }
+
+  return `/tests/new?${nextParams.toString()}`;
+}
+
+function parseRecipientData(value: string | string[] | undefined) {
+  const rawValue = getSingleValue(value);
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.map((recipient) => ({
+      name: typeof recipient?.name === "string" ? recipient.name : "",
+      email: typeof recipient?.email === "string" ? recipient.email : "",
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export default async function NewTestReviewPage({ searchParams }: ReviewPageProps) {
   await requireEditor();
   const params = await searchParams;
@@ -86,7 +136,7 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
       </div>
 
       <TestDraftReview
-        backHref={`/tests/new?unit=${unit}`}
+        backHref={buildBackHref(params, unit)}
         durationMinutes={getSingleValue(params.durationMinutes)}
         bonusEligibleQuestions={bonusDraft.eligibleQuestions}
         bonusQuestionCount={bonusDraft.selectedQuestions.length}
@@ -96,6 +146,8 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
         initialSelectedQuestionIds={draft.selectedQuestions.map((question) => question.id)}
         onlyAnswered={onlyAnswered}
         questionCount={draft.selectedQuestions.length}
+        recipientMode={getSingleValue(params.recipientMode) === "list" ? "list" : "single"}
+        recipients={parseRecipientData(params.recipientData)}
         selectionMode={selectionMode}
         sentAt={getSingleValue(params.sentAt)}
         stageIds={stageIds}

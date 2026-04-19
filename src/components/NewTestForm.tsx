@@ -7,11 +7,21 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
 import type { Option, QuestionRow } from "@/lib/types";
 
+type RecipientDraft = {
+  email: string;
+  name: string;
+};
+
+type RecipientMode = "single" | "list";
+type SelectionMode = "random" | "filtered" | "manual";
+
 export type NewTestFormInitialValues = {
   title: string;
   questionCount: string;
   bonusQuestionCount: string;
   durationMinutes: string;
+  recipientMode: RecipientMode;
+  recipients: RecipientDraft[];
   selectionMode: SelectionMode;
   studentName: string;
   studentEmail: string;
@@ -30,8 +40,6 @@ type NewTestFormProps = {
   stages: Option[];
   subjects: Option[];
 };
-
-type SelectionMode = "random" | "filtered" | "manual";
 
 function getBrowserLocalDateTimeValue() {
   const now = new Date();
@@ -55,8 +63,32 @@ export function NewTestForm({
 }: NewTestFormProps) {
   const [selectionMode, setSelectionMode] = useState<SelectionMode>(initialValues.selectionMode);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>(initialValues.questionIds);
+  const [recipientMode, setRecipientMode] = useState<RecipientMode>(initialValues.recipientMode);
+  const [recipients, setRecipients] = useState<RecipientDraft[]>(
+    initialValues.recipients.length > 0 ? initialValues.recipients : [{ name: "", email: "" }],
+  );
   const [sentAtValue, setSentAtValue] = useState(initialValues.sentAt);
   const isManualSelection = selectionMode === "manual";
+  const isListMode = recipientMode === "list";
+  const filledRecipientCount = recipients.filter((recipient) => recipient.name.trim() || recipient.email.trim()).length;
+
+  function updateRecipient(index: number, key: keyof RecipientDraft, value: string) {
+    setRecipients((current) => current.map((recipient, currentIndex) => (currentIndex === index ? { ...recipient, [key]: value } : recipient)));
+  }
+
+  function addRecipient() {
+    setRecipients((current) => [...current, { name: "", email: "" }]);
+  }
+
+  function removeRecipient(index: number) {
+    setRecipients((current) => {
+      if (current.length === 1) {
+        return [{ name: "", email: "" }];
+      }
+
+      return current.filter((_, currentIndex) => currentIndex !== index);
+    });
+  }
 
   useEffect(() => {
     if (initialValues.sentAt) {
@@ -70,6 +102,7 @@ export function NewTestForm({
   return (
     <form action={prepareTestDraftAction}>
       <input type="hidden" name="unit" value={selectedUnit} />
+      <input type="hidden" name="recipientMode" value={recipientMode} />
       <div className="grid grid-2">
         <label>
           כותרת מבחן
@@ -109,26 +142,88 @@ export function NewTestForm({
             <option value="manual">בחירה ידנית מהמאגר</option>
           </select>
         </label>
-        <label>
-          שם נבחן
-          <input name="studentName" placeholder="אופציונלי" defaultValue={initialValues.studentName} />
-        </label>
-        <label>
-          מייל תלמיד
-          <input name="studentEmail" type="email" placeholder="אופציונלי" defaultValue={initialValues.studentEmail} />
-        </label>
-        <label>
-          תאריך ושעת שליחה
-          <input
-            className="datetime-input-ltr"
-            dir="ltr"
-            lang="en-GB"
-            name="sentAt"
-            onChange={(event) => setSentAtValue(event.target.value)}
-            type="datetime-local"
-            value={sentAtValue}
-          />
-        </label>
+      </div>
+
+      <div className="grid grid-2 recipient-delivery-grid">
+        <div className="stack">
+          <label>
+            אופן שליחה
+            <select onChange={(event) => setRecipientMode(event.target.value as RecipientMode)} value={recipientMode}>
+              <option value="single">נבחן יחיד</option>
+              <option value="list">רשימת נבחנים</option>
+            </select>
+          </label>
+
+          {isListMode ? null : (
+            <>
+              <label>
+                שם נבחן
+                <input name="studentName" placeholder="אופציונלי" defaultValue={initialValues.studentName} />
+              </label>
+              <label>
+                מייל תלמיד
+                <input
+                  name="studentEmail"
+                  type="email"
+                  placeholder="אם יוזן, המבחן יישלח אוטומטית"
+                  defaultValue={initialValues.studentEmail}
+                />
+              </label>
+            </>
+          )}
+
+          <label>
+            תאריך ושעת שליחה
+            <input
+              className="datetime-input-ltr"
+              dir="ltr"
+              lang="en-GB"
+              name="sentAt"
+              onChange={(event) => setSentAtValue(event.target.value)}
+              type="datetime-local"
+              value={sentAtValue}
+            />
+          </label>
+        </div>
+
+        {isListMode ? (
+          <div className="question-block recipient-list-panel">
+            <input type="hidden" name="recipientData" value={JSON.stringify(recipients)} />
+            <div className="recipient-list-header">
+              <div>
+                <strong>רשימת נבחנים</strong>
+                <p className="muted">
+                  {filledRecipientCount > 0 ? `${filledRecipientCount} נבחנים הוזנו כרגע.` : "אפשר להוסיף כאן כמה תלמידים שצריך."}
+                </p>
+              </div>
+              <button className="button button-secondary" onClick={addRecipient} type="button">
+                הוספת תלמיד
+              </button>
+            </div>
+
+            <div className="stack">
+              {recipients.map((recipient, index) => (
+                <div className="recipient-list-row" key={`recipient-${index}`}>
+                  <input
+                    onChange={(event) => updateRecipient(index, "name", event.target.value)}
+                    placeholder="שם תלמיד"
+                    type="text"
+                    value={recipient.name}
+                  />
+                  <input
+                    onChange={(event) => updateRecipient(index, "email", event.target.value)}
+                    placeholder="student@example.com"
+                    type="email"
+                    value={recipient.email}
+                  />
+                  <button className="button button-danger" onClick={() => removeRecipient(index)} type="button">
+                    הסרה
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="stack">
@@ -221,8 +316,10 @@ export function NewTestForm({
         אם לא יוזן זמן, יילקח ערך ברירת המחדל מהמערכת. אם יוזן 0, למבחן לא תהיה מגבלת זמן.
       </p>
 
-      <SubmitButton pendingLabel="מכין טיוטת מבחן...">
-        {isManualSelection ? "יצירת מבחן" : "המשך לבחירת שאלות"}
+      <SubmitButton
+        pendingLabel={isManualSelection ? (isListMode ? "יוצר ושולח מבחנים..." : "יוצר מבחן...") : "מכין טיוטת מבחן..."}
+      >
+        {isManualSelection ? (isListMode ? "יצירה ושליחה לרשימה" : "יצירת מבחן") : "המשך לבחירת שאלות"}
       </SubmitButton>
     </form>
   );

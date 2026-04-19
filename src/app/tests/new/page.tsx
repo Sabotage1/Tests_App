@@ -9,6 +9,26 @@ type NewTestPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };
 
+function parseRecipientData(value: string) {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.map((recipient) => ({
+      name: typeof recipient?.name === "string" ? recipient.name : "",
+      email: typeof recipient?.email === "string" ? recipient.email : "",
+    }));
+  } catch {
+    return [];
+  }
+}
+
 function getSingleValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
@@ -39,6 +59,8 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
     questionCount: getSingleValue(params.questionCount) || "10",
     bonusQuestionCount: getSingleValue(params.bonusQuestionCount) || "0",
     durationMinutes: getSingleValue(params.durationMinutes),
+    recipientMode: getSingleValue(params.recipientMode) === "list" ? "list" : "single",
+    recipients: parseRecipientData(getSingleValue(params.recipientData)),
     selectionMode:
       getSingleValue(params.selectionMode) === "filtered"
         ? "filtered"
@@ -58,6 +80,8 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
     questionCount: initialValues.questionCount,
     bonusQuestionCount: initialValues.bonusQuestionCount,
     durationMinutes: initialValues.durationMinutes,
+    recipientMode: initialValues.recipientMode,
+    recipients: initialValues.recipients,
     selectionMode: initialValues.selectionMode,
     studentName: initialValues.studentName,
     studentEmail: initialValues.studentEmail,

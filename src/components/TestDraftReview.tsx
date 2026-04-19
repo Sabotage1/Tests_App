@@ -8,6 +8,11 @@ import { QUESTION_UNIT_LABELS } from "@/lib/constants";
 import type { QuestionUnit } from "@/lib/constants";
 import type { TestBuilderQuestion } from "@/lib/types";
 
+type RecipientDraft = {
+  email: string;
+  name: string;
+};
+
 type TestDraftReviewProps = {
   backHref: string;
   bonusEligibleQuestions: TestBuilderQuestion[];
@@ -19,6 +24,8 @@ type TestDraftReviewProps = {
   initialSelectedQuestionIds: string[];
   onlyAnswered: boolean;
   questionCount: number;
+  recipientMode: "single" | "list";
+  recipients: RecipientDraft[];
   selectionMode: "random" | "filtered";
   sentAt: string;
   stageIds: string[];
@@ -45,6 +52,8 @@ export function TestDraftReview({
   initialSelectedQuestionIds,
   onlyAnswered,
   questionCount,
+  recipientMode,
+  recipients,
   selectionMode,
   sentAt,
   stageIds,
@@ -60,6 +69,7 @@ export function TestDraftReview({
   const bonusQuestionsById = new Map(bonusEligibleQuestions.map((question) => [question.id, question]));
   const totalQuestionCount = selectedQuestionIds.length + selectedBonusQuestionIds.length;
   const isSharedBonusPool = bonusSourceUnit === unit;
+  const filledRecipientCount = recipients.filter((recipient) => recipient.name.trim() || recipient.email.trim()).length;
 
   function renderQuestionSection(input: {
     eligibleQuestions: TestBuilderQuestion[];
@@ -167,6 +177,9 @@ export function TestDraftReview({
             {bonusQuestionCount > 0 ? ` + ${bonusQuestionCount} בונוס` : ""}
           </p>
           {bonusSourceUnit ? <p className="muted">מאגר שאלות בונוס: {QUESTION_UNIT_LABELS[bonusSourceUnit]}</p> : null}
+          {recipientMode === "list" ? (
+            <p className="muted">השליחה תתבצע עבור {filledRecipientCount} נבחנים שונים עם קישור ייחודי לכל אחד.</p>
+          ) : null}
         </div>
       </div>
 
@@ -174,6 +187,8 @@ export function TestDraftReview({
         <input type="hidden" name="title" value={title} />
         <input type="hidden" name="selectionMode" value={selectionMode} />
         <input type="hidden" name="unit" value={unit} />
+        <input type="hidden" name="recipientMode" value={recipientMode} />
+        <input type="hidden" name="recipientData" value={JSON.stringify(recipients)} />
         <input type="hidden" name="questionCount" value={String(selectedQuestionIds.length)} />
         <input type="hidden" name="bonusQuestionCount" value={String(selectedBonusQuestionIds.length)} />
         <input type="hidden" name="bonusSourceUnit" value={bonusSourceUnit ?? ""} />
@@ -223,8 +238,10 @@ export function TestDraftReview({
           <a className="button button-secondary" href={backHref}>
             חזרה לעריכת המבחן
           </a>
-          <SubmitButton pendingLabel="שומר מבחן...">
-            יצירת המבחן הסופי ({totalQuestionCount} שאלות)
+          <SubmitButton pendingLabel={recipientMode === "list" ? "יוצר ושולח מבחנים..." : "שומר מבחן..."}>
+            {recipientMode === "list"
+              ? `יצירה ושליחה ל-${filledRecipientCount} נבחנים`
+              : `יצירת המבחן הסופי (${totalQuestionCount} שאלות)`}
           </SubmitButton>
         </div>
       </form>

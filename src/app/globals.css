@@ -443,6 +443,32 @@ textarea {
   padding-inline-end: 6px;
 }
 
+.recipient-delivery-grid {
+  align-items: start;
+}
+
+.recipient-list-panel {
+  gap: 16px;
+}
+
+.recipient-list-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.recipient-list-header p {
+  margin-bottom: 0;
+}
+
+.recipient-list-row {
+  display: grid;
+  grid-template-columns: 1.1fr 1.2fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
 .question-picker-card {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -680,6 +706,11 @@ textarea {
   .grid-2,
   .grid-3,
   .split {
+    grid-template-columns: 1fr;
+  }
+
+  .recipient-list-header,
+  .recipient-list-row {
     grid-template-columns: 1fr;
   }
 

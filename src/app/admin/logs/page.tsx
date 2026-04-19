@@ -30,6 +30,7 @@ const ACTION_LABELS: Record<string, string> = {
   "settings.bonus_points_updated": "עדכון שווי בונוס",
   "settings.default_duration_updated": "עדכון ברירת מחדל למשך מבחן",
   "test.bulk_deleted": "מחיקה גורפת",
+  "test.bulk_dispatched": "שליחה מרוכזת",
   "test.cloned": "שכפול מבחן",
   "test.created": "יצירת מבחן",
   "test.deleted": "מחיקת מבחן",
@@ -62,15 +63,19 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const DETAIL_LABELS: Record<string, string> = {
+  createdCount: "כמות מבחנים שנוצרו",
   deletedCount: "כמות שנמחקה",
   durationMinutes: "משך מבחן",
+  failedCount: "כמות שליחות שנכשלו",
   grade: "ציון",
   isBonusSource: "שאלת בונוס",
   lookupType: "סוג ערך",
   passwordReset: "איפוס סיסמה",
   questionCount: "כמות שאלות",
+  recipientMode: "מצב שליחה",
   role: "תפקיד",
   selectionMode: "שיטת בחירה",
+  sentCount: "כמות מיילים שנשלחו",
   shareToken: "טוקן שיתוף",
   source: "מקור",
   sourceReference: "מספר שאלה",

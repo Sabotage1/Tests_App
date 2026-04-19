@@ -7,7 +7,15 @@ import { QUESTION_UNIT_LABELS, type QuestionUnit, type TestStatus } from "@/lib/
 import { getTests } from "@/lib/repository";
 
 type TestLibraryPageProps = {
-  searchParams: Promise<{ deleted?: string; deleteError?: string; error?: string; unit?: string }>;
+  searchParams: Promise<{
+    bulkCreated?: string;
+    bulkFailed?: string;
+    bulkSent?: string;
+    deleted?: string;
+    deleteError?: string;
+    error?: string;
+    unit?: string;
+  }>;
 };
 
 const STATUS_LABELS: Record<TestStatus, string> = {
@@ -55,6 +63,11 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
       {params.error ? <div className="alert">{params.error}</div> : null}
       {params.deleted === "1" ? <div className="alert">המבחן נמחק מהמערכת.</div> : null}
       {params.deleteError ? <div className="alert">{params.deleteError}</div> : null}
+      {params.bulkCreated ? (
+        <div className="alert">
+          נוצרו {params.bulkCreated} מבחנים, נשלחו {params.bulkSent ?? "0"} מיילים, ונכשלו {params.bulkFailed ?? "0"} שליחות.
+        </div>
+      ) : null}
 
       <div className="card">
         <table className="table">

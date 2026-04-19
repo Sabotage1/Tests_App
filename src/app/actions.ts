@@ -92,9 +92,63 @@ function appendMany(params: URLSearchParams, name: string, values: string[]) {
 type RedirectPath = Parameters<typeof redirect>[0];
 const NEW_TEST_POOL_ERROR_MESSAGE = "אין מספיק שאלות במאגר בשביל ביצוע המשימה.";
 type AuditActor = Pick<User, "id" | "displayName" | "role">;
+type RecipientMode = "single" | "list";
+type RecipientInput = {
+  email: string;
+  name: string;
+};
 
 function normalizeNewTestErrorMessage(message: string) {
   return message.includes("אין מספיק שאלות") ? NEW_TEST_POOL_ERROR_MESSAGE : message;
+}
+
+function getRecipientMode(value: FormDataEntryValue | null): RecipientMode {
+  return value?.toString() === "list" ? "list" : "single";
+}
+
+function parseRecipientData(rawValue: string): RecipientInput[] {
+  if (!rawValue) {
+    return [];
+  }
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(rawValue);
+  } catch {
+    throw new Error("רשימת הנבחנים אינה בפורמט תקין.");
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error("רשימת הנבחנים אינה בפורמט תקין.");
+  }
+
+  const recipients = parsed.map((recipient) => ({
+    name: typeof recipient?.name === "string" ? recipient.name.trim() : "",
+    email: typeof recipient?.email === "string" ? recipient.email.trim() : "",
+  }));
+  const normalizedRecipients = recipients.filter((recipient) => recipient.name || recipient.email);
+
+  if (normalizedRecipients.length === 0) {
+    throw new Error("יש להזין לפחות תלמיד אחד ברשימת הנבחנים.");
+  }
+
+  const seenEmails = new Set<string>();
+
+  for (const recipient of normalizedRecipients) {
+    if (!recipient.name || !recipient.email) {
+      throw new Error("לכל תלמיד ברשימה חייבים להזין גם שם וגם כתובת מייל.");
+    }
+
+    const normalizedEmail = recipient.email.toLowerCase();
+    if (seenEmails.has(normalizedEmail)) {
+      throw new Error("אי אפשר לשלוח פעמיים לאותה כתובת מייל באותה רשימה.");
+    }
+
+    seenEmails.add(normalizedEmail);
+  }
+
+  return normalizedRecipients;
 }
 
 function buildNewTestFormRedirectPath(formData: FormData, errorMessage: string): RedirectPath {
@@ -108,6 +162,8 @@ function buildNewTestFormRedirectPath(formData: FormData, errorMessage: string):
   params.set("questionCount", formData.get("questionCount")?.toString() ?? "0");
   params.set("bonusQuestionCount", formData.get("bonusQuestionCount")?.toString() ?? "0");
   params.set("durationMinutes", formData.get("durationMinutes")?.toString() ?? "");
+  params.set("recipientMode", getRecipientMode(formData.get("recipientMode")));
+  params.set("recipientData", formData.get("recipientData")?.toString() ?? "");
   params.set("sentAt", formData.get("sentAt")?.toString() ?? "");
   params.set("studentName", formData.get("studentName")?.toString() ?? "");
   params.set("studentEmail", formData.get("studentEmail")?.toString() ?? "");
@@ -588,69 +644,205 @@ export async function createTestAction(formData: FormData) {
   const user = await requireEditor();
   const rawDuration = formData.get("durationMinutes")?.toString().trim() ?? "";
   const selectedUnit = formData.get("unit")?.toString() === "ifr" ? "ifr" : "vfr";
-  let id = "";
+  const recipientMode = getRecipientMode(formData.get("recipientMode"));
+  const title = formData.get("title")?.toString() ?? "";
+  const selectionMode = (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered" | "manual";
+  const questionCount = Number(formData.get("questionCount")?.toString() ?? "0");
+  const bonusQuestionCount = Number(formData.get("bonusQuestionCount")?.toString() ?? "0");
+  const sentAt = formData.get("sentAt")?.toString() ?? "";
+  const subjectIds = getMany(formData, "subjectIds");
+  const stageIds = getMany(formData, "stageIds");
+  const questionIds = getMany(formData, "questionIds");
+  const selectedQuestionIds = getMany(formData, "selectedQuestionIds");
+  const bonusSelectedQuestionIds = getMany(formData, "bonusSelectedQuestionIds");
+  const onlyAnswered = formData.get("onlyAnswered")?.toString() === "on";
+  const singleStudentName = formData.get("studentName")?.toString() ?? "";
+  const singleStudentEmail = formData.get("studentEmail")?.toString() ?? "";
 
   try {
-    id = await createTest({
-      title: formData.get("title")?.toString() ?? "",
+    if (recipientMode === "list") {
+      const recipients = parseRecipientData(formData.get("recipientData")?.toString() ?? "");
+      let createdCount = 0;
+      let failedCount = 0;
+      let sentCount = 0;
+
+      for (const recipient of recipients) {
+        const testId = await createTest({
+          title,
+          createdBy: user.id,
+          selectionMode,
+          unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
+          questionCount,
+          bonusQuestionCount,
+          bonusSourceUnit: getOptionalQuestionUnit(formData.get("bonusSourceUnit")),
+          durationMinutes: rawDuration === "" ? undefined : Number(rawDuration),
+          sentAt,
+          onlyAnswered,
+          subjectIds,
+          stageIds,
+          questionIds,
+          selectedQuestionIds,
+          bonusSelectedQuestionIds,
+          studentName: recipient.name,
+          studentEmail: recipient.email,
+        });
+
+        createdCount += 1;
+        const createdTest = await getTestById(testId);
+        await logUserAudit(user, {
+          action: "test.created",
+          entityType: "test",
+          entityId: testId,
+          entityLabel: createdTest?.title ?? title ?? null,
+          details: {
+            unit: createdTest?.unit ?? selectedUnit,
+            selectionMode,
+            questionCount: createdTest?.questionCount ?? null,
+            studentName: createdTest?.studentName ?? recipient.name,
+            studentEmail: createdTest?.studentEmail ?? recipient.email,
+          },
+        });
+
+        try {
+          await sendTestInvitationEmail(testId);
+          sentCount += 1;
+          const sentTest = await getTestById(testId);
+          await logUserAudit(user, {
+            action: "test.invitation_email_sent",
+            entityType: "test",
+            entityId: testId,
+            entityLabel: sentTest?.title ?? title ?? null,
+            details: {
+              studentEmail: sentTest?.studentEmail ?? recipient.email,
+            },
+          });
+        } catch (error) {
+          failedCount += 1;
+          console.error(`Bulk test invitation failed for ${recipient.email}`, error);
+        }
+      }
+
+      await logUserAudit(user, {
+        action: "test.bulk_dispatched",
+        entityType: "test",
+        entityLabel: title || "שליחה מרוכזת",
+        details: {
+          createdCount,
+          failedCount,
+          recipientMode,
+          sentCount,
+          unit: selectedUnit,
+        },
+      });
+
+      revalidateTestCollections();
+      revalidatePath("/tests/new");
+      redirect(
+        buildTestsLibraryRedirectPath(
+          selectedUnit,
+          `bulkCreated=${createdCount}&bulkSent=${sentCount}&bulkFailed=${failedCount}`,
+        ),
+      );
+    }
+
+    const id = await createTest({
+      title,
       createdBy: user.id,
-      selectionMode: (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered" | "manual",
+      selectionMode,
       unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
-      questionCount: Number(formData.get("questionCount")?.toString() ?? "0"),
-      bonusQuestionCount: Number(formData.get("bonusQuestionCount")?.toString() ?? "0"),
+      questionCount,
+      bonusQuestionCount,
       bonusSourceUnit: getOptionalQuestionUnit(formData.get("bonusSourceUnit")),
       durationMinutes: rawDuration === "" ? undefined : Number(rawDuration),
-      sentAt: formData.get("sentAt")?.toString() ?? "",
-      onlyAnswered: formData.get("onlyAnswered")?.toString() === "on",
-      subjectIds: getMany(formData, "subjectIds"),
-      stageIds: getMany(formData, "stageIds"),
-      questionIds: getMany(formData, "questionIds"),
-      selectedQuestionIds: getMany(formData, "selectedQuestionIds"),
-      bonusSelectedQuestionIds: getMany(formData, "bonusSelectedQuestionIds"),
-      studentName: formData.get("studentName")?.toString() ?? "",
-      studentEmail: formData.get("studentEmail")?.toString() ?? "",
+      sentAt,
+      onlyAnswered,
+      subjectIds,
+      stageIds,
+      questionIds,
+      selectedQuestionIds,
+      bonusSelectedQuestionIds,
+      studentName: singleStudentName,
+      studentEmail: singleStudentEmail,
     });
     const test = await getTestById(id);
     await logUserAudit(user, {
       action: "test.created",
       entityType: "test",
       entityId: id,
-      entityLabel: test?.title ?? formData.get("title")?.toString() ?? null,
+      entityLabel: test?.title ?? title ?? null,
       details: {
         unit: test?.unit ?? selectedUnit,
-        selectionMode: formData.get("selectionMode")?.toString() ?? "random",
+        selectionMode,
         questionCount: test?.questionCount ?? null,
-        studentName: test?.studentName ?? formData.get("studentName")?.toString() ?? null,
-        studentEmail: test?.studentEmail ?? formData.get("studentEmail")?.toString() ?? null,
+        studentName: test?.studentName ?? singleStudentName ?? null,
+        studentEmail: test?.studentEmail ?? singleStudentEmail ?? null,
       },
     });
+
+    if (singleStudentEmail.trim()) {
+      let redirectPath = `/tests/${id}?inviteMail=sent` as RedirectPath;
+
+      try {
+        await sendTestInvitationEmail(id);
+        const sentTest = await getTestById(id);
+        await logUserAudit(user, {
+          action: "test.invitation_email_sent",
+          entityType: "test",
+          entityId: id,
+          entityLabel: sentTest?.title ?? title ?? null,
+          details: {
+            studentEmail: sentTest?.studentEmail ?? singleStudentEmail,
+          },
+        });
+        if (sentTest?.shareToken) {
+          revalidatePath(`/share/${sentTest.shareToken}`);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "שליחת המבחן במייל נכשלה";
+        redirectPath = `/tests/${id}?inviteMailError=${encodeURIComponent(message)}` as RedirectPath;
+      }
+
+      revalidateTestCollections();
+      revalidatePath(`/tests/${id}`);
+      redirect(redirectPath);
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/tests/library");
+    redirect(`/tests/${id}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "יצירת המבחן נכשלה";
     redirect(buildNewTestFormRedirectPath(formData, message));
   }
-
-  revalidatePath("/dashboard");
-  revalidatePath("/tests/library");
-  redirect(`/tests/${id}`);
 }
 
 export async function prepareTestDraftAction(formData: FormData) {
   await requireEditor();
   const selectionMode = (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered" | "manual";
+  const recipientMode = getRecipientMode(formData.get("recipientMode"));
+
+  if (recipientMode === "list") {
+    try {
+      parseRecipientData(formData.get("recipientData")?.toString() ?? "");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "רשימת הנבחנים אינה תקינה";
+      redirect(buildNewTestFormRedirectPath(formData, message));
+    }
+  }
 
   if (selectionMode === "manual") {
     return createTestAction(formData);
   }
 
-  const unit = (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit;
-  const subjectIds = getMany(formData, "subjectIds");
-  const stageIds = getMany(formData, "stageIds");
-  const onlyAnswered = formData.get("onlyAnswered")?.toString() === "on";
-  const questionCount = Number(formData.get("questionCount")?.toString() ?? "0");
-  const bonusQuestionCount = Number(formData.get("bonusQuestionCount")?.toString() ?? "0");
-  let redirectPath: RedirectPath | null = null;
-
   try {
+    const unit = (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit;
+    const subjectIds = getMany(formData, "subjectIds");
+    const stageIds = getMany(formData, "stageIds");
+    const onlyAnswered = formData.get("onlyAnswered")?.toString() === "on";
+    const questionCount = Number(formData.get("questionCount")?.toString() ?? "0");
+    const bonusQuestionCount = Number(formData.get("bonusQuestionCount")?.toString() ?? "0");
+    let redirectPath: RedirectPath | null = null;
+
     const draft = await getTestDraftQuestions({
       selectionMode,
       unit,
@@ -674,6 +866,8 @@ export async function prepareTestDraftAction(formData: FormData) {
     params.set("questionCount", String(questionCount));
     params.set("bonusQuestionCount", String(Math.max(0, Number.isNaN(bonusQuestionCount) ? 0 : bonusQuestionCount)));
     params.set("durationMinutes", formData.get("durationMinutes")?.toString() ?? "");
+    params.set("recipientMode", recipientMode);
+    params.set("recipientData", formData.get("recipientData")?.toString() ?? "");
     params.set("sentAt", formData.get("sentAt")?.toString() ?? "");
     params.set("studentName", formData.get("studentName")?.toString() ?? "");
     params.set("studentEmail", formData.get("studentEmail")?.toString() ?? "");
@@ -698,16 +892,16 @@ export async function prepareTestDraftAction(formData: FormData) {
       params.set("bonusSourceUnit", bonusDraft.sourceUnit);
     }
     redirectPath = `/tests/new/review?${params.toString()}` as RedirectPath;
+
+    if (!redirectPath) {
+      redirect(buildNewTestFormRedirectPath(formData, "יצירת טיוטת המבחן נכשלה"));
+    }
+
+    redirect(redirectPath);
   } catch (error) {
     const message = error instanceof Error ? error.message : "יצירת טיוטת המבחן נכשלה";
     redirect(buildNewTestFormRedirectPath(formData, message));
   }
-
-  if (!redirectPath) {
-    redirect(buildNewTestFormRedirectPath(formData, "יצירת טיוטת המבחן נכשלה"));
-  }
-
-  redirect(redirectPath);
 }
 
 export async function createShareLinkAction(formData: FormData) {
