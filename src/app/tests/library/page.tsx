@@ -1,7 +1,8 @@
 import Link from "next/link";
 
-import { deleteTestAction, resendArchivedTestAction } from "@/app/actions";
+import { deleteTestAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
+import { TestLibraryResendForm } from "@/components/TestLibraryResendForm";
 import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit, type TestStatus } from "@/lib/constants";
 import { getTests } from "@/lib/repository";
@@ -105,31 +106,16 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
                         בדיקה חוזרת
                       </Link>
                     </div>
-                    <form action={resendArchivedTestAction}>
-                      <input type="hidden" name="sourceTestId" value={test.id} />
-                      <div className="grid grid-3">
-                        <label>
-                          שם נבחן חדש
-                          <input name="studentName" defaultValue="" required />
-                        </label>
-                        <label>
-                          מייל תלמיד חדש
-                          <input name="studentEmail" type="email" defaultValue="" />
-                        </label>
-                        <label>
-                          תאריך ושעת שליחה
-                          <input name="sentAt" type="datetime-local" />
-                        </label>
-                      </div>
-                      <SubmitButton pendingLabel="יוצר עותק חדש...">
-                        שליחה מחדש
-                      </SubmitButton>
-                    </form>
+                    <TestLibraryResendForm sourceTestId={test.id} unit={selectedUnit} />
                     {user.role === "admin" ? (
                       <form action={deleteTestAction}>
                         <input type="hidden" name="testId" value={test.id} />
                         <input type="hidden" name="unit" value={selectedUnit} />
-                        <SubmitButton className="button button-danger" pendingLabel="מוחק מבחן...">
+                        <SubmitButton
+                          className="button button-danger"
+                          confirmMessage="למחוק את המבחן הזה? הפעולה לא ניתנת לביטול."
+                          pendingLabel="מוחק מבחן..."
+                        >
                           מחיקת מבחן
                         </SubmitButton>
                       </form>

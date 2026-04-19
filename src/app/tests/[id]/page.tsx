@@ -111,7 +111,11 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
             <form action={deleteTestAction}>
               <input type="hidden" name="testId" value={test.id} />
               <input type="hidden" name="unit" value={test.unit} />
-              <SubmitButton className="button button-danger" pendingLabel="מוחק מבחן...">
+              <SubmitButton
+                className="button button-danger"
+                confirmMessage="למחוק את המבחן הזה? הפעולה לא ניתנת לביטול."
+                pendingLabel="מוחק מבחן..."
+              >
                 מחיקת מבחן
               </SubmitButton>
             </form>

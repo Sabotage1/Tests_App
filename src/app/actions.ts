@@ -658,6 +658,7 @@ export async function createTestAction(formData: FormData) {
   const onlyAnswered = formData.get("onlyAnswered")?.toString() === "on";
   const singleStudentName = formData.get("studentName")?.toString() ?? "";
   const singleStudentEmail = formData.get("studentEmail")?.toString() ?? "";
+  let redirectPath: RedirectPath | null = null;
 
   try {
     if (recipientMode === "list") {
@@ -737,83 +738,86 @@ export async function createTestAction(formData: FormData) {
 
       revalidateTestCollections();
       revalidatePath("/tests/new");
-      redirect(
-        buildTestsLibraryRedirectPath(
-          selectedUnit,
-          `bulkCreated=${createdCount}&bulkSent=${sentCount}&bulkFailed=${failedCount}`,
-        ),
+      redirectPath = buildTestsLibraryRedirectPath(
+        selectedUnit,
+        `bulkCreated=${createdCount}&bulkSent=${sentCount}&bulkFailed=${failedCount}`,
       );
-    }
-
-    const id = await createTest({
-      title,
-      createdBy: user.id,
-      selectionMode,
-      unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
-      questionCount,
-      bonusQuestionCount,
-      bonusSourceUnit: getOptionalQuestionUnit(formData.get("bonusSourceUnit")),
-      durationMinutes: rawDuration === "" ? undefined : Number(rawDuration),
-      sentAt,
-      onlyAnswered,
-      subjectIds,
-      stageIds,
-      questionIds,
-      selectedQuestionIds,
-      bonusSelectedQuestionIds,
-      studentName: singleStudentName,
-      studentEmail: singleStudentEmail,
-    });
-    const test = await getTestById(id);
-    await logUserAudit(user, {
-      action: "test.created",
-      entityType: "test",
-      entityId: id,
-      entityLabel: test?.title ?? title ?? null,
-      details: {
-        unit: test?.unit ?? selectedUnit,
+    } else {
+      const id = await createTest({
+        title,
+        createdBy: user.id,
         selectionMode,
-        questionCount: test?.questionCount ?? null,
-        studentName: test?.studentName ?? singleStudentName ?? null,
-        studentEmail: test?.studentEmail ?? singleStudentEmail ?? null,
-      },
-    });
+        unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
+        questionCount,
+        bonusQuestionCount,
+        bonusSourceUnit: getOptionalQuestionUnit(formData.get("bonusSourceUnit")),
+        durationMinutes: rawDuration === "" ? undefined : Number(rawDuration),
+        sentAt,
+        onlyAnswered,
+        subjectIds,
+        stageIds,
+        questionIds,
+        selectedQuestionIds,
+        bonusSelectedQuestionIds,
+        studentName: singleStudentName,
+        studentEmail: singleStudentEmail,
+      });
+      const test = await getTestById(id);
+      await logUserAudit(user, {
+        action: "test.created",
+        entityType: "test",
+        entityId: id,
+        entityLabel: test?.title ?? title ?? null,
+        details: {
+          unit: test?.unit ?? selectedUnit,
+          selectionMode,
+          questionCount: test?.questionCount ?? null,
+          studentName: test?.studentName ?? singleStudentName ?? null,
+          studentEmail: test?.studentEmail ?? singleStudentEmail ?? null,
+        },
+      });
 
-    if (singleStudentEmail.trim()) {
-      let redirectPath = `/tests/${id}?inviteMail=sent` as RedirectPath;
+      if (singleStudentEmail.trim()) {
+        redirectPath = `/tests/${id}?inviteMail=sent` as RedirectPath;
 
-      try {
-        await sendTestInvitationEmail(id);
-        const sentTest = await getTestById(id);
-        await logUserAudit(user, {
-          action: "test.invitation_email_sent",
-          entityType: "test",
-          entityId: id,
-          entityLabel: sentTest?.title ?? title ?? null,
-          details: {
-            studentEmail: sentTest?.studentEmail ?? singleStudentEmail,
-          },
-        });
-        if (sentTest?.shareToken) {
-          revalidatePath(`/share/${sentTest.shareToken}`);
+        try {
+          await sendTestInvitationEmail(id);
+          const sentTest = await getTestById(id);
+          await logUserAudit(user, {
+            action: "test.invitation_email_sent",
+            entityType: "test",
+            entityId: id,
+            entityLabel: sentTest?.title ?? title ?? null,
+            details: {
+              studentEmail: sentTest?.studentEmail ?? singleStudentEmail,
+            },
+          });
+          if (sentTest?.shareToken) {
+            revalidatePath(`/share/${sentTest.shareToken}`);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "שליחת המבחן במייל נכשלה";
+          redirectPath = `/tests/${id}?inviteMailError=${encodeURIComponent(message)}` as RedirectPath;
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "שליחת המבחן במייל נכשלה";
-        redirectPath = `/tests/${id}?inviteMailError=${encodeURIComponent(message)}` as RedirectPath;
+
+        revalidateTestCollections();
+        revalidatePath(`/tests/${id}`);
+      } else {
+        revalidatePath("/dashboard");
+        revalidatePath("/tests/library");
+        redirectPath = `/tests/${id}` as RedirectPath;
       }
-
-      revalidateTestCollections();
-      revalidatePath(`/tests/${id}`);
-      redirect(redirectPath);
     }
-
-    revalidatePath("/dashboard");
-    revalidatePath("/tests/library");
-    redirect(`/tests/${id}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : "יצירת המבחן נכשלה";
     redirect(buildNewTestFormRedirectPath(formData, message));
   }
+
+  if (!redirectPath) {
+    redirect(buildNewTestFormRedirectPath(formData, "יצירת המבחן נכשלה"));
+  }
+
+  redirect(redirectPath);
 }
 
 export async function prepareTestDraftAction(formData: FormData) {
@@ -928,41 +932,150 @@ export async function createShareLinkAction(formData: FormData) {
 export async function resendArchivedTestAction(formData: FormData) {
   const user = await requireEditor();
   const sourceTestId = formData.get("sourceTestId")?.toString() ?? "";
-  let newTestId = "";
+  const unit = formData.get("unit")?.toString();
+  const recipientMode = getRecipientMode(formData.get("recipientMode"));
+  let redirectPath: RedirectPath | null = null;
 
   try {
-    newTestId = await cloneTestForNewStudent({
-      sourceTestId,
-      createdBy: user.id,
-      studentName: formData.get("studentName")?.toString() ?? "",
-      studentEmail: formData.get("studentEmail")?.toString() ?? "",
-      sentAt: formData.get("sentAt")?.toString() ?? "",
-    });
+    if (recipientMode === "list") {
+      const recipients = parseRecipientData(formData.get("recipientData")?.toString() ?? "");
+      const sentAt = formData.get("sentAt")?.toString() ?? "";
+      const sourceTest = await getTestById(sourceTestId);
+      let createdCount = 0;
+      let failedCount = 0;
+      let sentCount = 0;
 
-    const shareToken = await ensureShareToken(newTestId);
-    const [newTest, sourceTest] = await Promise.all([getTestById(newTestId), getTestById(sourceTestId)]);
-    await logUserAudit(user, {
-      action: "test.cloned",
-      entityType: "test",
-      entityId: newTestId,
-      entityLabel: newTest?.title ?? null,
-      details: {
+      for (const recipient of recipients) {
+        const newTestId = await cloneTestForNewStudent({
+          sourceTestId,
+          createdBy: user.id,
+          studentName: recipient.name,
+          studentEmail: recipient.email,
+          sentAt,
+        });
+
+        const shareToken = await ensureShareToken(newTestId);
+        const newTest = await getTestById(newTestId);
+        createdCount += 1;
+
+        await logUserAudit(user, {
+          action: "test.cloned",
+          entityType: "test",
+          entityId: newTestId,
+          entityLabel: newTest?.title ?? null,
+          details: {
+            sourceTestId,
+            sourceTitle: sourceTest?.title ?? null,
+            shareToken,
+            studentName: newTest?.studentName ?? recipient.name,
+            studentEmail: newTest?.studentEmail ?? recipient.email,
+          },
+        });
+
+        try {
+          await sendTestInvitationEmail(newTestId);
+          sentCount += 1;
+          const sentTest = await getTestById(newTestId);
+          await logUserAudit(user, {
+            action: "test.invitation_email_sent",
+            entityType: "test",
+            entityId: newTestId,
+            entityLabel: sentTest?.title ?? sourceTest?.title ?? null,
+            details: {
+              studentEmail: sentTest?.studentEmail ?? recipient.email,
+            },
+          });
+        } catch (error) {
+          failedCount += 1;
+          console.error(`Library bulk resend failed for ${recipient.email}`, error);
+        }
+      }
+
+      await logUserAudit(user, {
+        action: "test.bulk_dispatched",
+        entityType: "test",
+        entityLabel: sourceTest?.title ?? "שליחה מרוכזת ממאגר מבחנים",
+        details: {
+          createdCount,
+          failedCount,
+          recipientMode,
+          sentCount,
+          sourceTestId,
+          sourceTitle: sourceTest?.title ?? null,
+          unit: unit ?? sourceTest?.unit ?? null,
+        },
+      });
+
+      revalidateTestCollections();
+      redirectPath = buildTestsLibraryRedirectPath(
+        unit,
+        `bulkCreated=${createdCount}&bulkSent=${sentCount}&bulkFailed=${failedCount}`,
+      );
+    } else {
+      const newTestId = await cloneTestForNewStudent({
         sourceTestId,
-        sourceTitle: sourceTest?.title ?? null,
-        shareToken,
-        studentName: newTest?.studentName ?? formData.get("studentName")?.toString() ?? null,
-        studentEmail: newTest?.studentEmail ?? formData.get("studentEmail")?.toString() ?? null,
-      },
-    });
-    revalidatePath("/tests/archive");
-    revalidatePath("/tests/library");
-    revalidatePath("/dashboard");
+        createdBy: user.id,
+        studentName: formData.get("studentName")?.toString() ?? "",
+        studentEmail: formData.get("studentEmail")?.toString() ?? "",
+        sentAt: formData.get("sentAt")?.toString() ?? "",
+      });
+
+      const shareToken = await ensureShareToken(newTestId);
+      const [newTest, sourceTest] = await Promise.all([getTestById(newTestId), getTestById(sourceTestId)]);
+      await logUserAudit(user, {
+        action: "test.cloned",
+        entityType: "test",
+        entityId: newTestId,
+        entityLabel: newTest?.title ?? null,
+        details: {
+          sourceTestId,
+          sourceTitle: sourceTest?.title ?? null,
+          shareToken,
+          studentName: newTest?.studentName ?? formData.get("studentName")?.toString() ?? null,
+          studentEmail: newTest?.studentEmail ?? formData.get("studentEmail")?.toString() ?? null,
+        },
+      });
+
+      if ((newTest?.studentEmail ?? "").trim()) {
+        redirectPath = `/tests/${newTestId}?inviteMail=sent` as RedirectPath;
+
+        try {
+          await sendTestInvitationEmail(newTestId);
+          const sentTest = await getTestById(newTestId);
+          await logUserAudit(user, {
+            action: "test.invitation_email_sent",
+            entityType: "test",
+            entityId: newTestId,
+            entityLabel: sentTest?.title ?? sourceTest?.title ?? null,
+            details: {
+              studentEmail: sentTest?.studentEmail ?? null,
+            },
+          });
+          if (sentTest?.shareToken) {
+            revalidatePath(`/share/${sentTest.shareToken}`);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "שליחת המבחן במייל נכשלה";
+          redirectPath = `/tests/${newTestId}?inviteMailError=${encodeURIComponent(message)}` as RedirectPath;
+        }
+
+        revalidateTestCollections();
+        revalidatePath(`/tests/${newTestId}`);
+      } else {
+        revalidateTestCollections();
+        redirectPath = `/tests/${newTestId}?reused=1` as RedirectPath;
+      }
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "שכפול המבחן נכשל";
-    redirect(`/tests/archive?error=${encodeURIComponent(message)}`);
+    redirect(buildTestsLibraryRedirectPath(unit, `error=${encodeURIComponent(message)}`));
   }
 
-  redirect(`/tests/${newTestId}?reused=1`);
+  if (!redirectPath) {
+    redirect(buildTestsLibraryRedirectPath(unit, "error=" + encodeURIComponent("שכפול המבחן נכשל")));
+  }
+
+  redirect(redirectPath);
 }
 
 export async function updateTestDurationAction(formData: FormData) {
