@@ -193,8 +193,28 @@ async function createSchema(client: PoolClient) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS recipient_lists (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      unit TEXT NOT NULL DEFAULT 'vfr',
+      created_by TEXT NOT NULL REFERENCES users(id),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS recipient_list_members (
+      id TEXT PRIMARY KEY,
+      recipient_list_id TEXT NOT NULL REFERENCES recipient_lists(id) ON DELETE CASCADE,
+      student_name TEXT NOT NULL,
+      student_email TEXT NOT NULL,
+      order_index INTEGER NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs (created_at DESC);
     CREATE INDEX IF NOT EXISTS audit_logs_entity_type_idx ON audit_logs (entity_type, created_at DESC);
+    CREATE INDEX IF NOT EXISTS recipient_lists_unit_name_idx ON recipient_lists (unit, name);
+    CREATE INDEX IF NOT EXISTS recipient_list_members_list_order_idx ON recipient_list_members (recipient_list_id, order_index);
 
     ALTER TABLE tests ADD COLUMN IF NOT EXISTS graded_by_name TEXT;
     ALTER TABLE questions ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
@@ -245,6 +265,12 @@ async function createSchema(client: PoolClient) {
         SELECT 1 FROM pg_constraint WHERE conname = 'stages_name_unit_key'
       ) THEN
         ALTER TABLE stages ADD CONSTRAINT stages_name_unit_key UNIQUE (name, unit);
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'recipient_lists_name_unit_key'
+      ) THEN
+        ALTER TABLE recipient_lists ADD CONSTRAINT recipient_lists_name_unit_key UNIQUE (name, unit);
       END IF;
     END
     $$;

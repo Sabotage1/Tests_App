@@ -16,6 +16,23 @@ export type Option = {
   unit?: QuestionUnit;
 };
 
+export type RecipientListMember = {
+  id: string;
+  name: string;
+  email: string;
+  orderIndex: number;
+};
+
+export type RecipientList = {
+  id: string;
+  name: string;
+  unit: QuestionUnit;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+  recipients: RecipientListMember[];
+};
+
 export type QuestionRow = {
   id: string;
   text: string;

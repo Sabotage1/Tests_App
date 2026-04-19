@@ -13,6 +13,8 @@ type RecipientDraft = {
   name: string;
 };
 
+type RecipientMode = "single" | "saved_list" | "manual_list";
+
 type TestDraftReviewProps = {
   backHref: string;
   bonusEligibleQuestions: TestBuilderQuestion[];
@@ -24,7 +26,9 @@ type TestDraftReviewProps = {
   initialSelectedQuestionIds: string[];
   onlyAnswered: boolean;
   questionCount: number;
-  recipientMode: "single" | "list";
+  recipientListId: string;
+  recipientListName?: string;
+  recipientMode: RecipientMode;
   recipients: RecipientDraft[];
   selectionMode: "random" | "filtered";
   sentAt: string;
@@ -52,6 +56,8 @@ export function TestDraftReview({
   initialSelectedQuestionIds,
   onlyAnswered,
   questionCount,
+  recipientListId,
+  recipientListName,
   recipientMode,
   recipients,
   selectionMode,
@@ -160,6 +166,22 @@ export function TestDraftReview({
     );
   }
 
+  function renderRecipientSummary() {
+    if (recipientMode === "saved_list") {
+      return (
+        <p className="muted">
+          השליחה תתבצע עבור {filledRecipientCount} נבחנים מתוך הרשימה "{recipientListName || "רשימה שמורה"}" עם קישור ייחודי לכל אחד.
+        </p>
+      );
+    }
+
+    if (recipientMode === "manual_list") {
+      return <p className="muted">השליחה תתבצע עבור {filledRecipientCount} נבחנים שונים עם קישור ייחודי לכל אחד.</p>;
+    }
+
+    return null;
+  }
+
   return (
     <div className="stack">
       <div className="page-header">
@@ -177,9 +199,7 @@ export function TestDraftReview({
             {bonusQuestionCount > 0 ? ` + ${bonusQuestionCount} בונוס` : ""}
           </p>
           {bonusSourceUnit ? <p className="muted">מאגר שאלות בונוס: {QUESTION_UNIT_LABELS[bonusSourceUnit]}</p> : null}
-          {recipientMode === "list" ? (
-            <p className="muted">השליחה תתבצע עבור {filledRecipientCount} נבחנים שונים עם קישור ייחודי לכל אחד.</p>
-          ) : null}
+          {renderRecipientSummary()}
         </div>
       </div>
 
@@ -188,7 +208,8 @@ export function TestDraftReview({
         <input type="hidden" name="selectionMode" value={selectionMode} />
         <input type="hidden" name="unit" value={unit} />
         <input type="hidden" name="recipientMode" value={recipientMode} />
-        <input type="hidden" name="recipientData" value={JSON.stringify(recipients)} />
+        <input type="hidden" name="recipientListId" value={recipientListId} />
+        <input type="hidden" name="recipientData" value={recipientMode === "manual_list" ? JSON.stringify(recipients) : ""} />
         <input type="hidden" name="questionCount" value={String(selectedQuestionIds.length)} />
         <input type="hidden" name="bonusQuestionCount" value={String(selectedBonusQuestionIds.length)} />
         <input type="hidden" name="bonusSourceUnit" value={bonusSourceUnit ?? ""} />
@@ -238,10 +259,10 @@ export function TestDraftReview({
           <a className="button button-secondary" href={backHref}>
             חזרה לעריכת המבחן
           </a>
-          <SubmitButton pendingLabel={recipientMode === "list" ? "יוצר ושולח מבחנים..." : "שומר מבחן..."}>
-            {recipientMode === "list"
-              ? `יצירה ושליחה ל-${filledRecipientCount} נבחנים`
-              : `יצירת המבחן הסופי (${totalQuestionCount} שאלות)`}
+          <SubmitButton pendingLabel={recipientMode === "single" ? "שומר מבחן..." : "יוצר ושולח מבחנים..."}>
+            {recipientMode === "single"
+              ? `יצירת המבחן הסופי (${totalQuestionCount} שאלות)`
+              : `יצירה ושליחה ל-${filledRecipientCount} נבחנים`}
           </SubmitButton>
         </div>
       </form>

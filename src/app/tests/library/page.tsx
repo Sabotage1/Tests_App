@@ -5,7 +5,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { TestLibraryResendForm } from "@/components/TestLibraryResendForm";
 import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit, type TestStatus } from "@/lib/constants";
-import { getTests } from "@/lib/repository";
+import { getRecipientLists, getTests } from "@/lib/repository";
 
 type TestLibraryPageProps = {
   searchParams: Promise<{
@@ -37,9 +37,9 @@ function formatGrade(value: number | null) {
 export default async function TestLibraryPage({ searchParams }: TestLibraryPageProps) {
   const user = await requireUser();
   const params = await searchParams;
-  const tests = await getTests();
   const selectedUnit: QuestionUnit = getSelectedUnitForUser(user, params.unit);
   const unitOrder = getUnitOrderForUser(user);
+  const [tests, recipientLists] = await Promise.all([getTests(), getRecipientLists(selectedUnit)]);
   const reusableTests = tests.filter((test) => test.selectionMode !== "archived_copy" && test.unit === selectedUnit);
 
   return (
@@ -106,7 +106,9 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
                         בדיקה חוזרת
                       </Link>
                     </div>
-                    <TestLibraryResendForm sourceTestId={test.id} unit={selectedUnit} />
+                    {user.role !== "viewer" ? (
+                      <TestLibraryResendForm recipientLists={recipientLists} sourceTestId={test.id} unit={selectedUnit} />
+                    ) : null}
                     {user.role === "admin" ? (
                       <form action={deleteTestAction}>
                         <input type="hidden" name="testId" value={test.id} />

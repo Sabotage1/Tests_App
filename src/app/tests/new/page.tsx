@@ -3,7 +3,7 @@ import Link from "next/link";
 import { NewTestForm, type NewTestFormInitialValues } from "@/components/NewTestForm";
 import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
-import { getBonusQuestionPoints, getDefaultTestDurationMinutes, getQuestions, getStages, getSubjects } from "@/lib/repository";
+import { getBonusQuestionPoints, getDefaultTestDurationMinutes, getQuestions, getRecipientLists, getStages, getSubjects } from "@/lib/repository";
 
 type NewTestPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -46,20 +46,28 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
   const params = await searchParams;
   const selectedUnit: QuestionUnit = getSelectedUnitForUser(user, getSingleValue(params.unit));
   const unitOrder = getUnitOrderForUser(user);
-  const [subjects, stages, defaultDurationMinutes, bonusQuestionPoints, questions] = await Promise.all([
+  const [subjects, stages, defaultDurationMinutes, bonusQuestionPoints, questions, recipientLists] = await Promise.all([
     getSubjects(selectedUnit),
     getStages(selectedUnit),
     getDefaultTestDurationMinutes(),
     getBonusQuestionPoints(),
     getQuestions(),
+    getRecipientLists(selectedUnit),
   ]);
+  const recipientModeParam = getSingleValue(params.recipientMode);
   const activeQuestions = questions.filter((question) => question.isActive === 1 && question.unit === selectedUnit);
   const initialValues: NewTestFormInitialValues = {
     title: getSingleValue(params.title) || "מבחן חדש",
     questionCount: getSingleValue(params.questionCount) || "10",
     bonusQuestionCount: getSingleValue(params.bonusQuestionCount) || "0",
     durationMinutes: getSingleValue(params.durationMinutes),
-    recipientMode: getSingleValue(params.recipientMode) === "list" ? "list" : "single",
+    recipientMode:
+      recipientModeParam === "saved_list"
+        ? "saved_list"
+        : recipientModeParam === "manual_list" || recipientModeParam === "list"
+          ? "manual_list"
+          : "single",
+    recipientListId: getSingleValue(params.recipientListId),
     recipients: parseRecipientData(getSingleValue(params.recipientData)),
     selectionMode:
       getSingleValue(params.selectionMode) === "filtered"
@@ -81,6 +89,7 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
     bonusQuestionCount: initialValues.bonusQuestionCount,
     durationMinutes: initialValues.durationMinutes,
     recipientMode: initialValues.recipientMode,
+    recipientListId: initialValues.recipientListId,
     recipients: initialValues.recipients,
     selectionMode: initialValues.selectionMode,
     studentName: initialValues.studentName,
@@ -118,6 +127,7 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
           defaultDurationMinutes={defaultDurationMinutes}
           initialValues={initialValues}
           key={formKey}
+          recipientLists={recipientLists}
           selectedUnit={selectedUnit}
           stages={stages}
           subjects={subjects}

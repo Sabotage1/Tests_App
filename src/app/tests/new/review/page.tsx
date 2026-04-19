@@ -4,7 +4,7 @@ import { TestDraftReview } from "@/components/TestDraftReview";
 import { requireEditor } from "@/lib/auth";
 import type { QuestionUnit } from "@/lib/constants";
 import { QUESTION_UNIT_LABELS } from "@/lib/constants";
-import { getBonusQuestionDraft, getTestDraftQuestions } from "@/lib/repository";
+import { getBonusQuestionDraft, getRecipientListById, getTestDraftQuestions } from "@/lib/repository";
 import type { TestBuilderQuestion } from "@/lib/types";
 
 type ReviewPageProps = {
@@ -37,6 +37,7 @@ function buildBackHref(params: Record<string, string | string[] | undefined>, un
   nextParams.set("bonusQuestionCount", getSingleValue(params.bonusQuestionCount));
   nextParams.set("durationMinutes", getSingleValue(params.durationMinutes));
   nextParams.set("recipientMode", getSingleValue(params.recipientMode));
+  nextParams.set("recipientListId", getSingleValue(params.recipientListId));
   nextParams.set("recipientData", getSingleValue(params.recipientData));
   nextParams.set("sentAt", getSingleValue(params.sentAt));
   nextParams.set("studentName", getSingleValue(params.studentName));
@@ -78,6 +79,20 @@ function parseRecipientData(value: string | string[] | undefined) {
   }
 }
 
+function getRecipientMode(value: string | string[] | undefined) {
+  const normalized = getSingleValue(value);
+
+  if (normalized === "saved_list") {
+    return "saved_list" as const;
+  }
+
+  if (normalized === "manual_list" || normalized === "list") {
+    return "manual_list" as const;
+  }
+
+  return "single" as const;
+}
+
 export default async function NewTestReviewPage({ searchParams }: ReviewPageProps) {
   await requireEditor();
   const params = await searchParams;
@@ -91,6 +106,8 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
   const onlyAnswered = getSingleValue(params.onlyAnswered) === "1";
   const subjectIds = getManyValues(params.subjectIds);
   const stageIds = getManyValues(params.stageIds);
+  const recipientMode = getRecipientMode(params.recipientMode);
+  const recipientListId = getSingleValue(params.recipientListId);
 
   if (selectedQuestionIds.length === 0) {
     redirect(`/tests/new?unit=${unit}&error=${encodeURIComponent("לא נבחרו שאלות לתצוגה מקדימה.")}`);
@@ -101,6 +118,8 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
     eligibleQuestions: [],
     selectedQuestions: [],
   };
+  let recipients = parseRecipientData(params.recipientData);
+  let recipientListName = "";
 
   try {
     draft = await getTestDraftQuestions({
@@ -120,6 +139,18 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
         excludeQuestionIds: draft.selectedQuestions.map((question) => question.id),
         selectedQuestionIds: bonusSelectedQuestionIds.length > 0 ? bonusSelectedQuestionIds : undefined,
       });
+    }
+
+    if (recipientMode === "saved_list" && recipientListId) {
+      const selectedRecipientList = await getRecipientListById(recipientListId);
+
+      if (selectedRecipientList) {
+        recipients = selectedRecipientList.recipients.map((recipient) => ({
+          name: recipient.name,
+          email: recipient.email,
+        }));
+        recipientListName = selectedRecipientList.name;
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "טעינת טיוטת המבחן נכשלה";
@@ -146,8 +177,10 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
         initialSelectedQuestionIds={draft.selectedQuestions.map((question) => question.id)}
         onlyAnswered={onlyAnswered}
         questionCount={draft.selectedQuestions.length}
-        recipientMode={getSingleValue(params.recipientMode) === "list" ? "list" : "single"}
-        recipients={parseRecipientData(params.recipientData)}
+        recipientListId={recipientListId}
+        recipientListName={recipientListName}
+        recipientMode={recipientMode}
+        recipients={recipients}
         selectionMode={selectionMode}
         sentAt={getSingleValue(params.sentAt)}
         stageIds={stageIds}

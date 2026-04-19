@@ -18,6 +18,8 @@ import type {
   DashboardStats,
   Option,
   QuestionRow,
+  RecipientList,
+  RecipientListMember,
   TestBuilderQuestion,
   TestDetails,
   TestListItem,
@@ -249,6 +251,23 @@ type LookupExportRow = {
   updated_at: string;
 };
 
+type RecipientListRow = {
+  id: string;
+  name: string;
+  unit: QuestionUnit;
+  created_by_name: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type RecipientListMemberRow = {
+  id: string;
+  recipient_list_id: string;
+  student_name: string;
+  student_email: string;
+  order_index: number;
+};
+
 type QuestionBankExportRow = {
   id: string;
   text: string;
@@ -274,6 +293,122 @@ function escapeHtml(value: string) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+function normalizeRecipientListMembers(
+  recipients: Array<{
+    name: string;
+    email: string;
+  }>,
+) {
+  const normalizedRecipients = recipients
+    .map((recipient) => ({
+      name: recipient.name.trim(),
+      email: recipient.email.trim(),
+    }))
+    .filter((recipient) => recipient.name || recipient.email);
+
+  if (normalizedRecipients.length === 0) {
+    throw new Error("יש להזין לפחות נבחן אחד ברשימה.");
+  }
+
+  const seenEmails = new Set<string>();
+
+  for (const recipient of normalizedRecipients) {
+    if (!recipient.name || !recipient.email) {
+      throw new Error("לכל נבחן ברשימה חייבים להזין גם שם וגם כתובת מייל.");
+    }
+
+    const normalizedEmail = recipient.email.toLowerCase();
+    if (seenEmails.has(normalizedEmail)) {
+      throw new Error("אי אפשר לשמור פעמיים את אותה כתובת מייל באותה רשימה.");
+    }
+
+    seenEmails.add(normalizedEmail);
+  }
+
+  return normalizedRecipients;
+}
+
+async function getRecipientListsWithQuery(
+  runQuery: QueryFn,
+  input?: {
+    id?: string;
+    unit?: QuestionUnit;
+  },
+) {
+  const conditions: string[] = [];
+  const values: unknown[] = [];
+
+  if (input?.id) {
+    values.push(input.id);
+    conditions.push(`rl.id = $${values.length}`);
+  }
+
+  if (input?.unit) {
+    values.push(input.unit);
+    conditions.push(`rl.unit = $${values.length}`);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const listsResult = await runQuery<RecipientListRow>(
+    `
+      SELECT
+        rl.id,
+        rl.name,
+        rl.unit,
+        u.display_name AS created_by_name,
+        rl.created_at::text,
+        rl.updated_at::text
+      FROM recipient_lists rl
+      JOIN users u ON u.id = rl.created_by
+      ${whereClause}
+      ORDER BY rl.name, rl.created_at DESC
+    `,
+    values,
+  );
+
+  const listIds = listsResult.rows.map((row) => row.id);
+
+  if (listIds.length === 0) {
+    return [];
+  }
+
+  const membersResult = await runQuery<RecipientListMemberRow>(
+    `
+      SELECT id, recipient_list_id, student_name, student_email, order_index
+      FROM recipient_list_members
+      WHERE recipient_list_id = ANY($1::text[])
+      ORDER BY order_index ASC, created_at ASC
+    `,
+    [listIds],
+  );
+
+  const membersByListId = new Map<string, RecipientListMember[]>();
+
+  for (const row of membersResult.rows) {
+    const currentMembers = membersByListId.get(row.recipient_list_id) ?? [];
+    currentMembers.push({
+      id: row.id,
+      name: row.student_name,
+      email: row.student_email,
+      orderIndex: row.order_index,
+    });
+    membersByListId.set(row.recipient_list_id, currentMembers);
+  }
+
+  return listsResult.rows.map(
+    (row) =>
+      ({
+        id: row.id,
+        name: row.name,
+        unit: row.unit,
+        createdByName: row.created_by_name,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        recipients: membersByListId.get(row.id) ?? [],
+      }) satisfies RecipientList,
+  );
 }
 
 function getAppBaseUrl() {
@@ -438,6 +573,146 @@ export async function getStages(unit?: QuestionUnit) {
     unit ? [unit] : [],
   );
   return result.rows;
+}
+
+export async function getRecipientLists(unit?: QuestionUnit) {
+  return getRecipientListsWithQuery((text, values) => query(text, values), {
+    unit,
+  });
+}
+
+export async function getRecipientListById(id: string) {
+  const lists = await getRecipientListsWithQuery((text, values) => query(text, values), {
+    id,
+  });
+  return lists[0] ?? null;
+}
+
+export async function upsertRecipientList(input: {
+  id?: string | null;
+  name: string;
+  unit: QuestionUnit;
+  createdBy: string;
+  recipients: Array<{
+    name: string;
+    email: string;
+  }>;
+}) {
+  const normalizedName = input.name.trim();
+  if (!normalizedName) {
+    throw new Error("יש להזין שם לרשימת השליחה.");
+  }
+
+  const normalizedRecipients = normalizeRecipientListMembers(input.recipients);
+
+  return withTransaction(async (client) => {
+    const duplicateResult = await client.query<{ id: string }>(
+      `
+        SELECT id
+        FROM recipient_lists
+        WHERE LOWER(name) = LOWER($1) AND unit = $2
+      `,
+      [normalizedName, input.unit],
+    );
+    const duplicateId = duplicateResult.rows[0]?.id ?? null;
+
+    if (duplicateId && duplicateId !== (input.id ?? null)) {
+      throw new Error("כבר קיימת רשימת שליחה בשם הזה עבור היחידה שנבחרה.");
+    }
+
+    const listId = input.id?.trim() || nanoid();
+
+    if (input.id) {
+      const updateResult = await client.query<{ id: string }>(
+        `
+          UPDATE recipient_lists
+          SET name = $1,
+              unit = $2,
+              updated_at = NOW()
+          WHERE id = $3
+          RETURNING id
+        `,
+        [normalizedName, input.unit, listId],
+      );
+
+      if (!updateResult.rows[0]) {
+        throw new Error("רשימת השליחה לא נמצאה.");
+      }
+
+      await client.query("DELETE FROM recipient_list_members WHERE recipient_list_id = $1", [listId]);
+    } else {
+      await client.query(
+        `
+          INSERT INTO recipient_lists (id, name, unit, created_by, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, NOW(), NOW())
+        `,
+        [listId, normalizedName, input.unit, input.createdBy],
+      );
+    }
+
+    for (const [index, recipient] of normalizedRecipients.entries()) {
+      await client.query(
+        `
+          INSERT INTO recipient_list_members (
+            id,
+            recipient_list_id,
+            student_name,
+            student_email,
+            order_index,
+            created_at
+          )
+          VALUES ($1, $2, $3, $4, $5, NOW())
+        `,
+        [nanoid(), listId, recipient.name, recipient.email, index + 1],
+      );
+    }
+
+    const savedLists = await getRecipientListsWithQuery((text, values) => client.query(text, values), {
+      id: listId,
+    });
+    return savedLists[0] ?? null;
+  });
+}
+
+export async function deleteRecipientList(id: string) {
+  return withTransaction(async (client) => {
+    const listResult = await client.query<{
+      id: string;
+      name: string;
+      unit: QuestionUnit;
+    }>(
+      `
+        SELECT id, name, unit
+        FROM recipient_lists
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [id],
+    );
+
+    const recipientList = listResult.rows[0];
+    if (!recipientList) {
+      throw new Error("רשימת השליחה לא נמצאה.");
+    }
+
+    const memberCountResult = await client.query<{ count: string }>(
+      `
+        SELECT COUNT(*)::text AS count
+        FROM recipient_list_members
+        WHERE recipient_list_id = $1
+      `,
+      [id],
+    );
+
+    await client.query("DELETE FROM recipient_lists WHERE id = $1", [id]);
+
+    return {
+      id: recipientList.id,
+      name: recipientList.name,
+      unit: recipientList.unit,
+      memberCount: Number(memberCountResult.rows[0]?.count ?? 0),
+    };
+  });
 }
 
 export async function getQuestionBankExport() {

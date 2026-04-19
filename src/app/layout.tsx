@@ -85,6 +85,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <span>יצירת מבחן</span>
             </span>
           </Link>
+          {currentUser.role !== "viewer" ? (
+            <Link href={"/recipient-lists" as Route}>
+              <span className="nav-link-content">
+                <span>רשימות נבחנים</span>
+              </span>
+            </Link>
+          ) : null}
           <Link href="/settings">
             <span className="nav-link-content">
               <span>הגדרות</span>

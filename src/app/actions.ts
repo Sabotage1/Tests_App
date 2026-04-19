@@ -13,6 +13,7 @@ import {
   changeUserPassword,
   cloneTestForNewStudent,
   createAuditLog,
+  deleteRecipientList,
   createTest,
   createUser,
   deleteLookup,
@@ -26,6 +27,7 @@ import {
   getDefaultTestDurationMinutes,
   getBonusQuestionPoints,
   getQuestionById,
+  getRecipientListById,
   getTestById,
   getTestDraftQuestions,
   sendGradeEmail,
@@ -37,6 +39,7 @@ import {
   submitTestByToken,
   updateUser,
   updateTestDuration,
+  upsertRecipientList,
   upsertLookup,
   upsertQuestion,
 } from "@/lib/repository";
@@ -92,7 +95,7 @@ function appendMany(params: URLSearchParams, name: string, values: string[]) {
 type RedirectPath = Parameters<typeof redirect>[0];
 const NEW_TEST_POOL_ERROR_MESSAGE = "אין מספיק שאלות במאגר בשביל ביצוע המשימה.";
 type AuditActor = Pick<User, "id" | "displayName" | "role">;
-type RecipientMode = "single" | "list";
+type RecipientMode = "single" | "saved_list" | "manual_list";
 type RecipientInput = {
   email: string;
   name: string;
@@ -103,7 +106,21 @@ function normalizeNewTestErrorMessage(message: string) {
 }
 
 function getRecipientMode(value: FormDataEntryValue | null): RecipientMode {
-  return value?.toString() === "list" ? "list" : "single";
+  const mode = value?.toString();
+
+  if (mode === "saved_list") {
+    return "saved_list";
+  }
+
+  if (mode === "manual_list" || mode === "list") {
+    return "manual_list";
+  }
+
+  return "single";
+}
+
+function getRecipientListId(value: FormDataEntryValue | null) {
+  return value?.toString().trim() ?? "";
 }
 
 function parseRecipientData(rawValue: string): RecipientInput[] {
@@ -151,6 +168,47 @@ function parseRecipientData(rawValue: string): RecipientInput[] {
   return normalizedRecipients;
 }
 
+async function resolveRecipients(formData: FormData, recipientMode: RecipientMode) {
+  if (recipientMode === "manual_list") {
+    return {
+      listId: null,
+      listName: null,
+      recipients: parseRecipientData(formData.get("recipientData")?.toString() ?? ""),
+    };
+  }
+
+  if (recipientMode !== "saved_list") {
+    return {
+      listId: null,
+      listName: null,
+      recipients: [],
+    };
+  }
+
+  const recipientListId = getRecipientListId(formData.get("recipientListId"));
+  if (!recipientListId) {
+    throw new Error("יש לבחור רשימת נבחנים שמורה.");
+  }
+
+  const savedRecipientList = await getRecipientListById(recipientListId);
+  if (!savedRecipientList) {
+    throw new Error("רשימת הנבחנים שנבחרה לא נמצאה.");
+  }
+
+  if (savedRecipientList.recipients.length === 0) {
+    throw new Error("הרשימה שנבחרה לא מכילה נבחנים לשליחה.");
+  }
+
+  return {
+    listId: savedRecipientList.id,
+    listName: savedRecipientList.name,
+    recipients: savedRecipientList.recipients.map((recipient) => ({
+      name: recipient.name,
+      email: recipient.email,
+    })),
+  };
+}
+
 function buildNewTestFormRedirectPath(formData: FormData, errorMessage: string): RedirectPath {
   const params = new URLSearchParams();
   const unit = formData.get("unit")?.toString() === "ifr" ? "ifr" : "vfr";
@@ -163,6 +221,7 @@ function buildNewTestFormRedirectPath(formData: FormData, errorMessage: string):
   params.set("bonusQuestionCount", formData.get("bonusQuestionCount")?.toString() ?? "0");
   params.set("durationMinutes", formData.get("durationMinutes")?.toString() ?? "");
   params.set("recipientMode", getRecipientMode(formData.get("recipientMode")));
+  params.set("recipientListId", getRecipientListId(formData.get("recipientListId")));
   params.set("recipientData", formData.get("recipientData")?.toString() ?? "");
   params.set("sentAt", formData.get("sentAt")?.toString() ?? "");
   params.set("studentName", formData.get("studentName")?.toString() ?? "");
@@ -184,6 +243,12 @@ function buildTestsLibraryRedirectPath(unit: string | undefined, extra?: string)
   const selectedUnit = unit === "ifr" ? "ifr" : "vfr";
   const suffix = extra ? `&${extra}` : "";
   return `/tests/library?unit=${selectedUnit}${suffix}` as RedirectPath;
+}
+
+function buildRecipientListsRedirectPath(unit: string | undefined, extra?: string): RedirectPath {
+  const selectedUnit = unit === "ifr" ? "ifr" : "vfr";
+  const suffix = extra ? `&${extra}` : "";
+  return `/recipient-lists?unit=${selectedUnit}${suffix}` as RedirectPath;
 }
 
 function revalidateTestCollections() {
@@ -405,6 +470,73 @@ export async function deleteLookupAction(formData: FormData) {
   revalidatePath("/questions");
   revalidatePath("/tests/new");
   redirect(getLookupSettingsRedirect(formData));
+}
+
+export async function saveRecipientListAction(formData: FormData) {
+  const user = await requireEditor();
+  const recipientListUnit = (formData.get("recipientListUnit")?.toString() === "ifr" ? "ifr" : "vfr") as QuestionUnit;
+  const id = formData.get("id")?.toString() || null;
+
+  try {
+    const savedRecipientList = await upsertRecipientList({
+      id,
+      name: formData.get("name")?.toString() ?? "",
+      unit: recipientListUnit,
+      createdBy: user.id,
+      recipients: parseRecipientData(formData.get("recipientData")?.toString() ?? ""),
+    });
+
+    await logUserAudit(user, {
+      action: id ? "recipient_list.updated" : "recipient_list.created",
+      entityType: "recipient_list",
+      entityId: savedRecipientList?.id ?? null,
+      entityLabel: savedRecipientList?.name ?? formData.get("name")?.toString() ?? null,
+      details: {
+        memberCount: savedRecipientList?.recipients.length ?? 0,
+        unit: savedRecipientList?.unit ?? recipientListUnit,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "שמירת רשימת השליחה נכשלה";
+    redirect(buildRecipientListsRedirectPath(recipientListUnit, `recipientListError=${encodeURIComponent(message)}`));
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/recipient-lists");
+  revalidatePath("/tests/new");
+  revalidatePath("/tests/new/review");
+  revalidatePath("/tests/library");
+  redirect(buildRecipientListsRedirectPath(recipientListUnit, "recipientListSaved=1"));
+}
+
+export async function deleteRecipientListAction(formData: FormData) {
+  const user = await requireEditor();
+  const recipientListUnit = (formData.get("recipientListUnit")?.toString() === "ifr" ? "ifr" : "vfr") as QuestionUnit;
+  const id = formData.get("id")?.toString() ?? "";
+
+  try {
+    const deletedRecipientList = await deleteRecipientList(id);
+    await logUserAudit(user, {
+      action: "recipient_list.deleted",
+      entityType: "recipient_list",
+      entityId: deletedRecipientList.id,
+      entityLabel: deletedRecipientList.name,
+      details: {
+        memberCount: deletedRecipientList.memberCount,
+        unit: deletedRecipientList.unit,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "מחיקת רשימת השליחה נכשלה";
+    redirect(buildRecipientListsRedirectPath(recipientListUnit, `recipientListError=${encodeURIComponent(message)}`));
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/recipient-lists");
+  revalidatePath("/tests/new");
+  revalidatePath("/tests/new/review");
+  revalidatePath("/tests/library");
+  redirect(buildRecipientListsRedirectPath(recipientListUnit, "recipientListDeleted=1"));
 }
 
 export async function saveUserAction(formData: FormData) {
@@ -661,8 +793,8 @@ export async function createTestAction(formData: FormData) {
   let redirectPath: RedirectPath | null = null;
 
   try {
-    if (recipientMode === "list") {
-      const recipients = parseRecipientData(formData.get("recipientData")?.toString() ?? "");
+    if (recipientMode !== "single") {
+      const { recipients, listId, listName } = await resolveRecipients(formData, recipientMode);
       let createdCount = 0;
       let failedCount = 0;
       let sentCount = 0;
@@ -726,10 +858,12 @@ export async function createTestAction(formData: FormData) {
       await logUserAudit(user, {
         action: "test.bulk_dispatched",
         entityType: "test",
-        entityLabel: title || "שליחה מרוכזת",
+        entityLabel: listName || title || "שליחה מרוכזת",
         details: {
           createdCount,
           failedCount,
+          recipientListId: listId,
+          recipientListName: listName,
           recipientMode,
           sentCount,
           unit: selectedUnit,
@@ -825,11 +959,15 @@ export async function prepareTestDraftAction(formData: FormData) {
   const selectionMode = (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered" | "manual";
   const recipientMode = getRecipientMode(formData.get("recipientMode"));
 
-  if (recipientMode === "list") {
+  if (recipientMode !== "single") {
     try {
-      parseRecipientData(formData.get("recipientData")?.toString() ?? "");
+      if (recipientMode === "manual_list") {
+        parseRecipientData(formData.get("recipientData")?.toString() ?? "");
+      } else {
+        await resolveRecipients(formData, recipientMode);
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "רשימת הנבחנים אינה תקינה";
+      const message = error instanceof Error ? error.message : "פרטי הנבחנים אינם תקינים";
       redirect(buildNewTestFormRedirectPath(formData, message));
     }
   }
@@ -871,6 +1009,7 @@ export async function prepareTestDraftAction(formData: FormData) {
     params.set("bonusQuestionCount", String(Math.max(0, Number.isNaN(bonusQuestionCount) ? 0 : bonusQuestionCount)));
     params.set("durationMinutes", formData.get("durationMinutes")?.toString() ?? "");
     params.set("recipientMode", recipientMode);
+    params.set("recipientListId", getRecipientListId(formData.get("recipientListId")));
     params.set("recipientData", formData.get("recipientData")?.toString() ?? "");
     params.set("sentAt", formData.get("sentAt")?.toString() ?? "");
     params.set("studentName", formData.get("studentName")?.toString() ?? "");
@@ -937,8 +1076,8 @@ export async function resendArchivedTestAction(formData: FormData) {
   let redirectPath: RedirectPath | null = null;
 
   try {
-    if (recipientMode === "list") {
-      const recipients = parseRecipientData(formData.get("recipientData")?.toString() ?? "");
+    if (recipientMode !== "single") {
+      const { recipients, listId, listName } = await resolveRecipients(formData, recipientMode);
       const sentAt = formData.get("sentAt")?.toString() ?? "";
       const sourceTest = await getTestById(sourceTestId);
       let createdCount = 0;
@@ -994,10 +1133,12 @@ export async function resendArchivedTestAction(formData: FormData) {
       await logUserAudit(user, {
         action: "test.bulk_dispatched",
         entityType: "test",
-        entityLabel: sourceTest?.title ?? "שליחה מרוכזת ממאגר מבחנים",
+        entityLabel: listName ?? sourceTest?.title ?? "שליחה מרוכזת ממאגר מבחנים",
         details: {
           createdCount,
           failedCount,
+          recipientListId: listId,
+          recipientListName: listName,
           recipientMode,
           sentCount,
           sourceTestId,
