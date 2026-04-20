@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { SubmitButton } from "@/components/SubmitButton";
-import { requireUser } from "@/lib/auth";
+import { getAccessibleUnitsForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS } from "@/lib/constants";
 import { getTests } from "@/lib/repository";
 
@@ -61,9 +61,9 @@ function matchesGradeBand(grade: number, band: GradeBand) {
 }
 
 export default async function GradedTestsPage({ searchParams }: GradedTestsPageProps) {
-  await requireUser();
+  const user = await requireUser();
   const params = await searchParams;
-  const tests = await getTests();
+  const tests = await getTests(getAccessibleUnitsForUser(user));
   const gradedTests = tests.filter((test) => test.status === "graded" && test.grade !== null);
   const years = [...new Set(gradedTests.map((test) => getTestYear(test.gradedAt)).filter(Boolean))].sort((a, b) =>
     Number(b) - Number(a),

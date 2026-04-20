@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { gradeTestAction, gradeTestWithAiAction } from "@/app/actions";
-import { requireUser } from "@/lib/auth";
+import { getAccessibleUnitsForUser, requireUser } from "@/lib/auth";
 import { AiGradingButton } from "@/components/AiGradingButton";
 import { SubmitButton } from "@/components/SubmitButton";
 import { getBonusQuestionPoints, getTestById } from "@/lib/repository";
@@ -25,10 +25,13 @@ function getSolvedMinutes(startedAt: string | null, submittedAt: string | null) 
 }
 
 export default async function GradePage({ params, searchParams }: GradePageProps) {
-  await requireUser();
+  const user = await requireUser();
   const { id } = await params;
   const query = await searchParams;
-  const [test, bonusQuestionPoints] = await Promise.all([getTestById(id), getBonusQuestionPoints()]);
+  const [test, bonusQuestionPoints] = await Promise.all([
+    getTestById(id, getAccessibleUnitsForUser(user)),
+    getBonusQuestionPoints(),
+  ]);
 
   if (!test) {
     notFound();

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { TestDraftReview } from "@/components/TestDraftReview";
-import { requireEditor } from "@/lib/auth";
+import { getAccessibleUnitsForUser, getSelectedUnitForUser, requireEditor } from "@/lib/auth";
 import type { QuestionUnit } from "@/lib/constants";
 import { QUESTION_UNIT_LABELS } from "@/lib/constants";
 import { getBonusQuestionDraft, getRecipientListById, getTestDraftQuestions } from "@/lib/repository";
@@ -94,13 +94,16 @@ function getRecipientMode(value: string | string[] | undefined) {
 }
 
 export default async function NewTestReviewPage({ searchParams }: ReviewPageProps) {
-  await requireEditor();
+  const user = await requireEditor();
   const params = await searchParams;
-  const unit: QuestionUnit = getSingleValue(params.unit) === "ifr" ? "ifr" : "vfr";
+  const accessibleUnits = getAccessibleUnitsForUser(user);
+  const unit: QuestionUnit = getSelectedUnitForUser(user, getSingleValue(params.unit));
   const selectionMode = getSingleValue(params.selectionMode) === "filtered" ? "filtered" : "random";
   const selectedQuestionIds = getManyValues(params.selectedQuestionIds);
   const bonusSelectedQuestionIds = getManyValues(params.bonusSelectedQuestionIds);
-  const bonusSourceUnit = getOptionalUnitValue(params.bonusSourceUnit);
+  const requestedBonusSourceUnit = getOptionalUnitValue(params.bonusSourceUnit);
+  const bonusSourceUnit =
+    requestedBonusSourceUnit && accessibleUnits.includes(requestedBonusSourceUnit) ? requestedBonusSourceUnit : undefined;
   const questionCount = Number(getSingleValue(params.questionCount) || "0");
   const bonusQuestionCount = Number(getSingleValue(params.bonusQuestionCount) || "0");
   const onlyAnswered = getSingleValue(params.onlyAnswered) === "1";
@@ -135,6 +138,7 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
     if (bonusQuestionCount > 0) {
       bonusDraft = await getBonusQuestionDraft({
         questionCount: bonusQuestionCount,
+        allowedUnits: accessibleUnits,
         sourceUnit: bonusSourceUnit,
         excludeQuestionIds: draft.selectedQuestions.map((question) => question.id),
         selectedQuestionIds: bonusSelectedQuestionIds.length > 0 ? bonusSelectedQuestionIds : undefined,
@@ -142,7 +146,7 @@ export default async function NewTestReviewPage({ searchParams }: ReviewPageProp
     }
 
     if (recipientMode === "saved_list" && recipientListId) {
-      const selectedRecipientList = await getRecipientListById(recipientListId);
+      const selectedRecipientList = await getRecipientListById(recipientListId, accessibleUnits);
 
       if (selectedRecipientList) {
         recipients = selectedRecipientList.recipients.map((recipient) => ({

@@ -51,7 +51,7 @@ export default async function NewTestPage({ searchParams }: NewTestPageProps) {
     getStages(selectedUnit),
     getDefaultTestDurationMinutes(),
     getBonusQuestionPoints(),
-    getQuestions(),
+    getQuestions(selectedUnit),
     getRecipientLists(selectedUnit),
   ]);
   const recipientModeParam = getSingleValue(params.recipientMode);

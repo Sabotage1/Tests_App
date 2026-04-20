@@ -5,7 +5,7 @@ import { archiveQuestionAction, deleteQuestionAction, saveQuestionAction } from 
 import { QuestionListHeightSync } from "@/components/QuestionListHeightSync";
 import { QuestionUnitSwitcher } from "@/components/QuestionUnitSwitcher";
 import { SubmitButton } from "@/components/SubmitButton";
-import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
+import { getAccessibleUnitsForUser, getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
 import { getQuestionById, getQuestions, getStages, getSubjects } from "@/lib/repository";
 
@@ -62,12 +62,13 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
   const user = await requireUser();
   const params = await searchParams;
   const selectedUnit: QuestionUnit = getSelectedUnitForUser(user, params.unit);
+  const accessibleUnits = getAccessibleUnitsForUser(user);
   const unitOrder = getUnitOrderForUser(user);
   const [questions, subjects, stages, editingQuestion] = await Promise.all([
-    getQuestions(),
+    getQuestions(selectedUnit),
     getSubjects(selectedUnit),
     getStages(selectedUnit),
-    params.edit ? getQuestionById(params.edit) : Promise.resolve(null),
+    params.edit ? getQuestionById(params.edit, accessibleUnits) : Promise.resolve(null),
   ]);
   const unitQuestions = questions.filter((question) => question.unit === selectedUnit);
   const selectedBonusFilter: BonusFilter =

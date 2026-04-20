@@ -4,7 +4,7 @@ import { cache } from "react";
 
 import { nanoid } from "nanoid";
 
-import { SESSION_COOKIE, type QuestionUnit } from "@/lib/constants";
+import { QUESTION_UNITS, SESSION_COOKIE, type QuestionUnit } from "@/lib/constants";
 import { query } from "@/lib/db";
 import type { User } from "@/lib/types";
 
@@ -66,25 +66,39 @@ function isQuestionUnit(value: string | undefined): value is QuestionUnit {
   return value === "vfr" || value === "ifr";
 }
 
+export function getAccessibleUnitsForUser(user: Pick<User, "units">): QuestionUnit[] {
+  const accessibleUnits = QUESTION_UNITS.filter((unit) => user.units.includes(unit));
+  return accessibleUnits.length > 0 ? accessibleUnits : ["vfr"];
+}
+
+export function canUserAccessUnit(user: Pick<User, "units">, unit: QuestionUnit) {
+  return getAccessibleUnitsForUser(user).includes(unit);
+}
+
 export function getDefaultUnitForUser(user: Pick<User, "units">): QuestionUnit {
-  if (user.units.includes("vfr")) {
-    return "vfr";
-  }
-
-  if (user.units.includes("ifr")) {
-    return "ifr";
-  }
-
-  return "vfr";
+  return getAccessibleUnitsForUser(user)[0] ?? "vfr";
 }
 
 export function getSelectedUnitForUser(user: Pick<User, "units">, requestedUnit?: string): QuestionUnit {
-  return isQuestionUnit(requestedUnit) ? requestedUnit : getDefaultUnitForUser(user);
+  return isQuestionUnit(requestedUnit) && canUserAccessUnit(user, requestedUnit)
+    ? requestedUnit
+    : getDefaultUnitForUser(user);
 }
 
 export function getUnitOrderForUser(user: Pick<User, "units">): QuestionUnit[] {
+  const accessibleUnits = getAccessibleUnitsForUser(user);
   const defaultUnit = getDefaultUnitForUser(user);
-  return defaultUnit === "ifr" ? ["ifr", "vfr"] : ["vfr", "ifr"];
+  return [defaultUnit, ...accessibleUnits.filter((unit) => unit !== defaultUnit)];
+}
+
+export function assertUserCanAccessUnit(
+  user: Pick<User, "units">,
+  unit: QuestionUnit,
+  errorMessage = "אין הרשאה ליחידה שנבחרה.",
+) {
+  if (!canUserAccessUnit(user, unit)) {
+    throw new Error(errorMessage);
+  }
 }
 
 export async function requireUser() {

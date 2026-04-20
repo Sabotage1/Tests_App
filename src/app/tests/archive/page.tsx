@@ -34,13 +34,13 @@ function getArchiveYear(value: string | null) {
 export default async function ArchiveTestsPage({ searchParams }: ArchivePageProps) {
   const user = await requireUser();
   const params = await searchParams;
-  const tests = await getTests();
   const selectedUnit: QuestionUnit = getSelectedUnitForUser(user, params.unit);
   const unitOrder = getUnitOrderForUser(user);
+  const tests = await getTests(selectedUnit);
   const selectedYear = params.year?.trim() ?? "";
   const selectedSubject = params.subject?.trim() ?? "";
   const selectedStage = params.stage?.trim() ?? "";
-  const archivedTests = tests.filter((test) => test.status !== "generated" && test.unit === selectedUnit);
+  const archivedTests = tests.filter((test) => test.status !== "generated");
   const availableYears = Array.from(
     new Set(
       archivedTests

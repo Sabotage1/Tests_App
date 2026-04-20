@@ -3,11 +3,14 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { APP_NAME } from "@/lib/constants";
 
 type LoginPageProps = {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; retryAfter?: string }>;
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
+  const retryAfterSeconds = Number(params.retryAfter ?? "0");
+  const retryAfterMinutes =
+    Number.isNaN(retryAfterSeconds) || retryAfterSeconds <= 0 ? null : Math.max(1, Math.ceil(retryAfterSeconds / 60));
 
   return (
     <div className="login-wrap">
@@ -18,7 +21,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             <p>מערכת לניהול וייצור מבחנים</p>
           </div>
         </div>
-        {params.error ? <div className="alert">שם המשתמש או הסיסמה אינם תקינים.</div> : null}
+        {params.error === "rate_limit" ? (
+          <div className="alert">יותר מדי ניסיונות התחברות. נסה שוב בעוד {retryAfterMinutes ?? 15} דקות.</div>
+        ) : params.error ? (
+          <div className="alert">שם המשתמש או הסיסמה אינם תקינים.</div>
+        ) : null}
         <form action={loginAction}>
           <label>
             שם משתמש

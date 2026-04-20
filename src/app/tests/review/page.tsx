@@ -24,10 +24,10 @@ type ReviewTestsPageProps = {
 export default async function ReviewTestsPage({ searchParams }: ReviewTestsPageProps) {
   const user = await requireUser();
   const params = await searchParams;
-  const tests = await getTests();
   const selectedUnit: QuestionUnit = getSelectedUnitForUser(user, params.unit);
+  const tests = await getTests(selectedUnit);
   const unitOrder = getUnitOrderForUser(user);
-  const pendingTests = tests.filter((test) => test.status === "completed" && test.unit === selectedUnit);
+  const pendingTests = tests.filter((test) => test.status === "completed");
 
   return (
     <div className="stack">

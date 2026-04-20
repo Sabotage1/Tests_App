@@ -79,9 +79,29 @@ function normalizeSourceReference(value: string | null | undefined) {
   return normalized === "" ? null : normalized;
 }
 
+const LOGIN_USERNAME_FAILURE_LIMIT = 5;
+const LOGIN_IP_FAILURE_LIMIT = 20;
+const LOGIN_FAILURE_WINDOW_MINUTES = 15;
+
+function normalizeUnitFilter(units?: QuestionUnit | QuestionUnit[]) {
+  const normalizedUnits = (Array.isArray(units) ? units : units ? [units] : []).filter((unit): unit is QuestionUnit =>
+    QUESTION_UNITS.includes(unit),
+  );
+
+  return Array.from(new Set(normalizedUnits));
+}
+
 function isMissingDuration(value: number | undefined) {
   return value === undefined || Number.isNaN(value);
 }
+
+function normalizeUsername(value: string) {
+  return value.trim().toLowerCase();
+}
+
+type LoginRateLimitState = {
+  retryAfterSeconds: number;
+};
 
 function hasExpectedAnswer(answer: string) {
   const normalizedAnswer = answer.trim();
@@ -335,6 +355,7 @@ async function getRecipientListsWithQuery(
   input?: {
     id?: string;
     unit?: QuestionUnit;
+    units?: QuestionUnit[];
   },
 ) {
   const conditions: string[] = [];
@@ -348,6 +369,12 @@ async function getRecipientListsWithQuery(
   if (input?.unit) {
     values.push(input.unit);
     conditions.push(`rl.unit = $${values.length}`);
+  }
+
+  const allowedUnits = normalizeUnitFilter(input?.units);
+  if (allowedUnits.length > 0) {
+    values.push(allowedUnits);
+    conditions.push(`rl.unit = ANY($${values.length}::text[])`);
   }
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -469,6 +496,97 @@ async function syncQuestionLinks(
   }
 }
 
+async function validateLookupIdsForUnit(
+  client: PoolClient,
+  table: "subjects" | "stages",
+  ids: string[],
+  unit: QuestionUnit,
+  label: "נושאים" | "שלבים",
+) {
+  const normalizedIds = normalizeDistinctIds(ids);
+  if (normalizedIds.length === 0) {
+    return normalizedIds;
+  }
+
+  const result = await client.query<{ id: string }>(
+    `SELECT id FROM ${table} WHERE id = ANY($1::text[]) AND unit = $2`,
+    [normalizedIds, unit],
+  );
+
+  if (result.rows.length !== normalizedIds.length) {
+    throw new Error(`נשלחו ${label} שלא שייכים ליחידה שנבחרה.`);
+  }
+
+  return normalizedIds;
+}
+
+export async function getLoginRateLimitState(input: { username: string; ipAddress?: string | null }): Promise<LoginRateLimitState | null> {
+  const username = normalizeUsername(input.username);
+  const ipAddress = input.ipAddress?.trim() || null;
+  await query("DELETE FROM login_attempts WHERE created_at < NOW() - INTERVAL '1 day'");
+  const [usernameResult, ipResult] = await Promise.all([
+    query<{ count: string; latest_attempt: string | null }>(
+      `
+        SELECT COUNT(*)::text AS count, MAX(created_at)::text AS latest_attempt
+        FROM login_attempts
+        WHERE username = $1
+          AND created_at >= NOW() - ($2::text || ' minutes')::interval
+      `,
+      [username, String(LOGIN_FAILURE_WINDOW_MINUTES)],
+    ),
+    ipAddress
+      ? query<{ count: string; latest_attempt: string | null }>(
+          `
+            SELECT COUNT(*)::text AS count, MAX(created_at)::text AS latest_attempt
+            FROM login_attempts
+            WHERE ip_address = $1
+              AND created_at >= NOW() - ($2::text || ' minutes')::interval
+          `,
+          [ipAddress, String(LOGIN_FAILURE_WINDOW_MINUTES)],
+        )
+      : Promise.resolve({ rows: [{ count: "0", latest_attempt: null }] }),
+  ]);
+
+  const usernameCount = Number(usernameResult.rows[0]?.count ?? 0);
+  const ipCount = Number(ipResult.rows[0]?.count ?? 0);
+  const usernameLatestAttempt = usernameResult.rows[0]?.latest_attempt;
+  const ipLatestAttempt = ipResult.rows[0]?.latest_attempt;
+
+  const limitedAt =
+    usernameCount >= LOGIN_USERNAME_FAILURE_LIMIT
+      ? usernameLatestAttempt
+      : ipCount >= LOGIN_IP_FAILURE_LIMIT
+        ? ipLatestAttempt
+        : null;
+
+  if (!limitedAt) {
+    return null;
+  }
+
+  const unlockAt = new Date(limitedAt).getTime() + LOGIN_FAILURE_WINDOW_MINUTES * 60 * 1000;
+  const retryAfterSeconds = Math.max(1, Math.ceil((unlockAt - Date.now()) / 1000));
+
+  return {
+    retryAfterSeconds,
+  };
+}
+
+export async function recordFailedLoginAttempt(input: { username: string; ipAddress?: string | null }) {
+  await query("DELETE FROM login_attempts WHERE created_at < NOW() - INTERVAL '1 day'");
+  await query(
+    `
+      INSERT INTO login_attempts (id, username, ip_address, created_at)
+      VALUES ($1, $2, $3, NOW())
+    `,
+    [nanoid(), normalizeUsername(input.username), input.ipAddress?.trim() || null],
+  );
+}
+
+export async function clearFailedLoginAttempts(input: { username: string }) {
+  const username = normalizeUsername(input.username);
+  await query("DELETE FROM login_attempts WHERE username = $1", [username]);
+}
+
 export async function authenticateUser(username: string, password: string) {
   const result = await query<UserRow>(
     `
@@ -477,7 +595,7 @@ export async function authenticateUser(username: string, password: string) {
       FROM users
       WHERE username = $1
     `,
-    [username.trim().toLowerCase()],
+    [normalizeUsername(username)],
   );
 
   const row = result.rows[0];
@@ -554,9 +672,14 @@ export async function deleteAllTests() {
   return result.rows.length;
 }
 
-export async function getPendingReviewCount() {
+export async function getPendingReviewCount(units?: QuestionUnit | QuestionUnit[]) {
+  const allowedUnits = normalizeUnitFilter(units);
+  const values: unknown[] = [];
+  const unitCondition =
+    allowedUnits.length > 0 ? ` AND unit = ANY($${values.push(allowedUnits)}::text[])` : "";
   const result = await query<{ count: string }>(
-    "SELECT COUNT(*)::text AS count FROM tests WHERE status = 'completed'",
+    `SELECT COUNT(*)::text AS count FROM tests WHERE status = 'completed'${unitCondition}`,
+    values,
   );
 
   return Number(result.rows[0]?.count ?? 0);
@@ -575,15 +698,18 @@ export async function getStages(unit?: QuestionUnit) {
   return result.rows;
 }
 
-export async function getRecipientLists(unit?: QuestionUnit) {
+export async function getRecipientLists(unit?: QuestionUnit | QuestionUnit[]) {
   return getRecipientListsWithQuery((text, values) => query(text, values), {
-    unit,
+    unit: Array.isArray(unit) ? undefined : unit,
+    units: Array.isArray(unit) ? unit : undefined,
   });
 }
 
-export async function getRecipientListById(id: string) {
+export async function getRecipientListById(id: string, units?: QuestionUnit | QuestionUnit[]) {
   const lists = await getRecipientListsWithQuery((text, values) => query(text, values), {
     id,
+    unit: Array.isArray(units) ? undefined : units,
+    units: Array.isArray(units) ? units : undefined,
   });
   return lists[0] ?? null;
 }
@@ -1056,8 +1182,10 @@ export async function upsertLookup(
   id: string | null,
   name: string,
   unit: QuestionUnit,
+  allowedUnits?: QuestionUnit[],
 ) {
   const normalizedName = name.trim();
+  const normalizedAllowedUnits = normalizeUnitFilter(allowedUnits);
   const existingResult = await query<{ id: string }>(
     `SELECT id FROM ${type} WHERE LOWER(name) = LOWER($1) AND unit = $2`,
     [normalizedName, unit],
@@ -1069,10 +1197,17 @@ export async function upsertLookup(
   }
 
   if (id) {
+    const values: unknown[] = [normalizedName, unit, id];
+    const accessCondition =
+      normalizedAllowedUnits.length > 0 ? ` AND unit = ANY($${values.push(normalizedAllowedUnits)}::text[])` : "";
     const result = await query<{ id: string; name: string; unit: QuestionUnit }>(
-      `UPDATE ${type} SET name = $1, unit = $2, updated_at = NOW() WHERE id = $3 RETURNING id, name, unit`,
-      [normalizedName, unit, id],
+      `UPDATE ${type} SET name = $1, unit = $2, updated_at = NOW() WHERE id = $3${accessCondition} RETURNING id, name, unit`,
+      values,
     );
+
+    if (!result.rows[0]) {
+      throw new Error("הערך לא נמצא או שאין הרשאה לעדכן אותו.");
+    }
 
     return {
       id: result.rows[0].id,
@@ -1100,10 +1235,14 @@ export async function upsertLookup(
   };
 }
 
-export async function deleteLookup(type: "subjects" | "stages", id: string) {
+export async function deleteLookup(type: "subjects" | "stages", id: string, allowedUnits?: QuestionUnit[]) {
+  const normalizedAllowedUnits = normalizeUnitFilter(allowedUnits);
+  const values: unknown[] = [id];
+  const accessCondition =
+    normalizedAllowedUnits.length > 0 ? ` AND unit = ANY($${values.push(normalizedAllowedUnits)}::text[])` : "";
   const result = await query<{ id: string; name: string; unit: QuestionUnit }>(
-    `DELETE FROM ${type} WHERE id = $1 RETURNING id, name, unit`,
-    [id],
+    `DELETE FROM ${type} WHERE id = $1${accessCondition} RETURNING id, name, unit`,
+    values,
   );
 
   return result.rows[0] ?? null;
@@ -1262,17 +1401,22 @@ export async function getBonusQuestionDraft(input: {
   excludeQuestionIds?: string[];
   selectedQuestionIds?: string[];
   sourceUnit?: QuestionUnit;
+  allowedUnits?: QuestionUnit[];
 }) {
   const requiredCount = Number.isNaN(input.questionCount) ? 0 : Math.max(0, input.questionCount);
   const selectedQuestionIds = normalizeDistinctIds(input.selectedQuestionIds);
   const missingSelectionMessage = "חלק משאלות הבונוס שנבחרו כבר לא זמינות יותר. יש לרענן את המסך ולנסות שוב.";
+  const allowedUnits = normalizeUnitFilter(input.allowedUnits);
+  const candidateUnits = (allowedUnits.length > 0 ? allowedUnits : QUESTION_UNITS).filter(
+    (unit) => !input.sourceUnit || unit === input.sourceUnit,
+  );
 
   if (requiredCount < 1) {
     throw new Error("יש לבחור לפחות שאלת בונוס אחת.");
   }
 
   const pools = await Promise.all(
-    QUESTION_UNITS.map(async (unit) => {
+    candidateUnits.map(async (unit) => {
       const { eligiblePool } = await getQuestionPoolsForTestBuilder({
         selectionMode: "random",
         unit,
@@ -1331,7 +1475,11 @@ export async function getBonusQuestionDraft(input: {
   };
 }
 
-export async function getQuestionById(id: string) {
+export async function getQuestionById(id: string, units?: QuestionUnit | QuestionUnit[]) {
+  const allowedUnits = normalizeUnitFilter(units);
+  const values: unknown[] = [id];
+  const unitCondition =
+    allowedUnits.length > 0 ? ` AND q.unit = ANY($${values.push(allowedUnits)}::text[])` : "";
   const result = await query<QuestionRow>(
     `
       SELECT
@@ -1355,15 +1503,20 @@ export async function getQuestionById(id: string) {
       LEFT JOIN question_stages qst ON qst.question_id = q.id
       LEFT JOIN stages st ON st.id = qst.stage_id
       WHERE q.id = $1
+      ${unitCondition}
       GROUP BY q.id
     `,
-    [id],
+    values,
   );
 
   return result.rows[0] ?? null;
 }
 
-export async function getQuestions() {
+export async function getQuestions(units?: QuestionUnit | QuestionUnit[]) {
+  const allowedUnits = normalizeUnitFilter(units);
+  const values: unknown[] = [];
+  const whereClause =
+    allowedUnits.length > 0 ? `WHERE q.unit = ANY($${values.push(allowedUnits)}::text[])` : "";
   const result = await query<QuestionRow>(`
     SELECT
       q.id,
@@ -1385,13 +1538,14 @@ export async function getQuestions() {
     LEFT JOIN subjects s ON s.id = qs.subject_id
     LEFT JOIN question_stages qst ON qst.question_id = q.id
     LEFT JOIN stages st ON st.id = qst.stage_id
+    ${whereClause}
     GROUP BY q.id
     ORDER BY
       q.source ASC,
       NULLIF(regexp_replace(COALESCE(q.source_reference, ''), '\\D', '', 'g'), '')::INTEGER NULLS LAST,
       q.source_reference ASC NULLS LAST,
       q.created_at ASC
-  `);
+  `, values);
 
   return result.rows;
 }
@@ -1412,6 +1566,8 @@ export async function upsertQuestion(input: {
   const isBonusSource = Boolean(input.isBonusSource);
 
   await withTransaction(async (client) => {
+    const subjectIds = await validateLookupIdsForUnit(client, "subjects", input.subjectIds, input.unit, "נושאים");
+    const stageIds = await validateLookupIdsForUnit(client, "stages", input.stageIds, input.unit, "שלבים");
     const normalizedReference = normalizeSourceReference(input.sourceReference);
     let referenceToSave = normalizedReference;
 
@@ -1497,8 +1653,8 @@ export async function upsertQuestion(input: {
       );
     }
 
-    await syncQuestionLinks(client, "question_subjects", "subject_id", questionId, input.subjectIds);
-    await syncQuestionLinks(client, "question_stages", "stage_id", questionId, input.stageIds);
+    await syncQuestionLinks(client, "question_subjects", "subject_id", questionId, subjectIds);
+    await syncQuestionLinks(client, "question_stages", "stage_id", questionId, stageIds);
   });
 
   return questionId;
@@ -1512,19 +1668,31 @@ export async function deleteQuestion(id: string) {
   await query("DELETE FROM questions WHERE id = $1", [id]);
 }
 
-export async function getDashboardStats() {
+export async function getDashboardStats(units?: QuestionUnit | QuestionUnit[]) {
+  const allowedUnits = normalizeUnitFilter(units);
+  const questionValues: unknown[] = [];
+  const questionUnitCondition =
+    allowedUnits.length > 0 ? ` AND unit = ANY($${questionValues.push(allowedUnits)}::text[])` : "";
+  const testValues = allowedUnits.length > 0 ? [allowedUnits] : [];
+  const testUnitCondition = allowedUnits.length > 0 ? ` WHERE unit = ANY($1::text[])` : "";
+  const failedValues = allowedUnits.length > 0 ? [allowedUnits] : [];
+  const failedUnitCondition = allowedUnits.length > 0 ? ` AND unit = ANY($1::text[])` : "";
   const [questionsResult, testsResult, failedResult] = await Promise.all([
-    query<{ count: string }>("SELECT COUNT(*)::text AS count FROM questions WHERE is_active = TRUE"),
+    query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM questions WHERE is_active = TRUE${questionUnitCondition}`,
+      questionValues,
+    ),
     query<{ status: string; count: string }>(`
       SELECT status, COUNT(*)::text AS count
       FROM tests
+      ${testUnitCondition}
       GROUP BY status
-    `),
+    `, testValues),
     query<{ count: string }>(`
       SELECT COUNT(*)::text AS count
       FROM tests
-      WHERE status = 'graded' AND grade < 60
-    `),
+      WHERE status = 'graded' AND grade < 60${failedUnitCondition}
+    `, failedValues),
   ]);
 
   const statsMap = new Map(testsResult.rows.map((row) => [row.status, Number(row.count)]));
@@ -1541,7 +1709,11 @@ export async function getDashboardStats() {
   return stats;
 }
 
-export async function getTests() {
+export async function getTests(units?: QuestionUnit | QuestionUnit[]) {
+  const allowedUnits = normalizeUnitFilter(units);
+  const values: unknown[] = [];
+  const whereClause =
+    allowedUnits.length > 0 ? `WHERE t.unit = ANY($${values.push(allowedUnits)}::text[])` : "";
   const result = await query<{
     id: string;
     title: string;
@@ -1593,8 +1765,9 @@ export async function getTests() {
       ), ARRAY[]::TEXT[]) AS stage_names
     FROM tests t
     JOIN users u ON u.id = t.created_by
+    ${whereClause}
     ORDER BY t.created_at DESC
-  `);
+  `, values);
 
   return result.rows.map((row) => ({
     id: row.id,
@@ -1662,6 +1835,7 @@ export async function createTest(input: {
   createdBy: string;
   selectionMode: "random" | "filtered" | "manual";
   unit: QuestionUnit;
+  allowedUnits?: QuestionUnit[];
   questionCount: number;
   bonusQuestionCount?: number;
   bonusSourceUnit?: QuestionUnit;
@@ -1699,6 +1873,7 @@ export async function createTest(input: {
       ? await getBonusQuestionDraft({
           questionCount: bonusQuestionCount,
           sourceUnit: input.bonusSourceUnit,
+          allowedUnits: input.allowedUnits,
           selectedQuestionIds: input.bonusSelectedQuestionIds,
           excludeQuestionIds: selectedQuestions.map((question) => question.id),
         })
@@ -1862,7 +2037,11 @@ export async function updateTestDuration(input: {
   );
 }
 
-async function getTestByIdWithQuery(runQuery: QueryFn, id: string) {
+async function getTestByIdWithQuery(runQuery: QueryFn, id: string, units?: QuestionUnit | QuestionUnit[]) {
+  const allowedUnits = normalizeUnitFilter(units);
+  const testValues: unknown[] = [id];
+  const unitCondition =
+    allowedUnits.length > 0 ? ` AND t.unit = ANY($${testValues.push(allowedUnits)}::text[])` : "";
   const testResult = await runQuery<{
     id: string;
     title: string;
@@ -1910,8 +2089,9 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string) {
       FROM tests t
       JOIN users u ON u.id = t.created_by
       WHERE t.id = $1
+      ${unitCondition}
     `,
-    [id],
+    testValues,
   );
 
   const test = testResult.rows[0];
@@ -1987,8 +2167,8 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string) {
   } satisfies TestDetails;
 }
 
-export async function getTestById(id: string) {
-  return getTestByIdWithQuery((text, values) => query(text, values), id);
+export async function getTestById(id: string, units?: QuestionUnit | QuestionUnit[]) {
+  return getTestByIdWithQuery((text, values) => query(text, values), id, units);
 }
 
 export async function ensureShareToken(testId: string) {
@@ -2028,8 +2208,8 @@ export async function startTestByToken(token: string, studentName?: string, stud
     `
       UPDATE tests
       SET started_at = COALESCE(started_at, NOW()),
-          student_name = COALESCE(NULLIF($1, ''), student_name),
-          student_email = COALESCE(NULLIF($2, ''), student_email),
+          student_name = COALESCE(student_name, NULLIF($1, '')),
+          student_email = COALESCE(student_email, NULLIF($2, '')),
           updated_at = NOW()
       WHERE share_token = $3
         AND status IN ('generated', 'sent')
@@ -2099,8 +2279,8 @@ export async function submitTestByToken(input: {
         UPDATE tests
         SET status = 'completed',
             submitted_at = NOW(),
-            student_name = COALESCE(NULLIF($1, ''), student_name),
-            student_email = COALESCE(NULLIF($2, ''), student_email),
+            student_name = COALESCE(student_name, NULLIF($1, '')),
+            student_email = COALESCE(student_email, NULLIF($2, '')),
             updated_at = NOW()
         WHERE id = $3
       `,

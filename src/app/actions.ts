@@ -1,9 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { clearSession, createSession, requireAdmin, requireEditor, requireUser } from "@/lib/auth";
+import {
+  assertUserCanAccessUnit,
+  clearSession,
+  createSession,
+  getAccessibleUnitsForUser,
+  requireAdmin,
+  requireEditor,
+  requireUser,
+} from "@/lib/auth";
 import { gradeTestWithAi } from "@/lib/ai-grading";
 import type { QuestionUnit } from "@/lib/constants";
 import type { User } from "@/lib/types";
@@ -11,6 +20,7 @@ import {
   archiveQuestion,
   authenticateUser,
   changeUserPassword,
+  clearFailedLoginAttempts,
   cloneTestForNewStudent,
   createAuditLog,
   deleteRecipientList,
@@ -23,13 +33,15 @@ import {
   deleteAllTests,
   ensureShareToken,
   getBonusQuestionDraft,
-  gradeTest,
   getDefaultTestDurationMinutes,
   getBonusQuestionPoints,
+  getLoginRateLimitState,
   getQuestionById,
   getRecipientListById,
   getTestById,
   getTestDraftQuestions,
+  gradeTest,
+  recordFailedLoginAttempt,
   sendGradeEmail,
   sendReviewNotificationEmails,
   sendTestInvitationEmail,
@@ -54,6 +66,20 @@ function getMany(formData: FormData, name: string) {
 function getOptionalQuestionUnit(value: FormDataEntryValue | null) {
   const unit = value?.toString();
   return unit === "ifr" || unit === "vfr" ? unit : undefined;
+}
+
+async function getRequestIpAddress() {
+  const store = await headers();
+  const forwardedFor = store.get("x-forwarded-for");
+  if (forwardedFor) {
+    const firstIp = forwardedFor.split(",")[0]?.trim();
+    if (firstIp) {
+      return firstIp;
+    }
+  }
+
+  const realIp = store.get("x-real-ip")?.trim();
+  return realIp || null;
 }
 
 function getQuestionsRedirectSuffix(formData: FormData) {
@@ -100,6 +126,43 @@ type RecipientInput = {
   email: string;
   name: string;
 };
+
+function getAuthorizedUnitForUser(
+  user: Pick<User, "units">,
+  value: FormDataEntryValue | null,
+  errorMessage = "אין הרשאה ליחידה שנבחרה.",
+) {
+  const unit = getOptionalQuestionUnit(value) ?? "vfr";
+  assertUserCanAccessUnit(user, unit, errorMessage);
+  return unit;
+}
+
+async function getAccessibleQuestionOrThrow(user: Pick<User, "units">, questionId: string) {
+  const question = await getQuestionById(questionId, getAccessibleUnitsForUser(user));
+  if (!question) {
+    throw new Error("השאלה לא נמצאה או שאין הרשאה אליה.");
+  }
+
+  return question;
+}
+
+async function getAccessibleRecipientListOrThrow(user: Pick<User, "units">, listId: string) {
+  const recipientList = await getRecipientListById(listId, getAccessibleUnitsForUser(user));
+  if (!recipientList) {
+    throw new Error("רשימת הנבחנים לא נמצאה או שאין הרשאה אליה.");
+  }
+
+  return recipientList;
+}
+
+async function getAccessibleTestOrThrow(user: Pick<User, "units">, testId: string) {
+  const test = await getTestById(testId, getAccessibleUnitsForUser(user));
+  if (!test) {
+    throw new Error("המבחן לא נמצא או שאין הרשאה אליו.");
+  }
+
+  return test;
+}
 
 function normalizeNewTestErrorMessage(message: string) {
   return message.includes("אין מספיק שאלות") ? NEW_TEST_POOL_ERROR_MESSAGE : message;
@@ -168,7 +231,7 @@ function parseRecipientData(rawValue: string): RecipientInput[] {
   return normalizedRecipients;
 }
 
-async function resolveRecipients(formData: FormData, recipientMode: RecipientMode) {
+async function resolveRecipients(user: Pick<User, "units">, formData: FormData, recipientMode: RecipientMode) {
   if (recipientMode === "manual_list") {
     return {
       listId: null,
@@ -190,11 +253,7 @@ async function resolveRecipients(formData: FormData, recipientMode: RecipientMod
     throw new Error("יש לבחור רשימת נבחנים שמורה.");
   }
 
-  const savedRecipientList = await getRecipientListById(recipientListId);
-  if (!savedRecipientList) {
-    throw new Error("רשימת הנבחנים שנבחרה לא נמצאה.");
-  }
-
+  const savedRecipientList = await getAccessibleRecipientListOrThrow(user, recipientListId);
   if (savedRecipientList.recipients.length === 0) {
     throw new Error("הרשימה שנבחרה לא מכילה נבחנים לשליחה.");
   }
@@ -302,12 +361,20 @@ async function logAudit(input: {
 export async function loginAction(formData: FormData) {
   const username = formData.get("username")?.toString() ?? "";
   const password = formData.get("password")?.toString() ?? "";
+  const ipAddress = await getRequestIpAddress();
+
+  const rateLimitState = await getLoginRateLimitState({ username, ipAddress });
+  if (rateLimitState) {
+    redirect(`/login?error=rate_limit&retryAfter=${rateLimitState.retryAfterSeconds}`);
+  }
 
   const user = await authenticateUser(username, password);
   if (!user) {
+    await recordFailedLoginAttempt({ username, ipAddress });
     redirect("/login?error=1");
   }
 
+  await clearFailedLoginAttempts({ username });
   await createSession(user.id);
   redirect("/dashboard");
 }
@@ -322,13 +389,17 @@ export async function saveQuestionAction(formData: FormData) {
   const id = formData.get("id")?.toString() || null;
   const redirectSuffix = getQuestionsRedirectSuffix(formData);
   try {
+    const unit = getAuthorizedUnitForUser(user, formData.get("unit"));
+    if (id) {
+      await getAccessibleQuestionOrThrow(user, id);
+    }
     const questionId = await upsertQuestion({
       id,
       text: formData.get("text")?.toString() ?? "",
       answer: formData.get("answer")?.toString() ?? "",
       questionType: formData.get("questionType")?.toString() ?? "open",
       isBonusSource: formData.get("isBonusSource")?.toString() === "on",
-      unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
+      unit,
       source: formData.get("source")?.toString() ?? "הוזן ידנית",
       sourceReference: formData.get("sourceReference")?.toString() ?? null,
       subjectIds: getMany(formData, "subjectIds"),
@@ -366,7 +437,7 @@ export async function archiveQuestionAction(formData: FormData) {
     redirect(`/questions${redirectSuffix}` as RedirectPath);
   }
 
-  const question = await getQuestionById(id);
+  const question = await getAccessibleQuestionOrThrow(user, id);
   await archiveQuestion(id);
   await logUserAudit(user, {
     action: "question.archived",
@@ -393,7 +464,7 @@ export async function deleteQuestionAction(formData: FormData) {
     redirect(`/questions${redirectSuffix}` as RedirectPath);
   }
 
-  const question = await getQuestionById(id);
+  const question = await getAccessibleQuestionOrThrow(user, id);
   await deleteQuestion(id);
   await logUserAudit(user, {
     action: "question.deleted",
@@ -417,14 +488,14 @@ export async function saveLookupAction(formData: FormData) {
   const type = formData.get("type")?.toString();
   const name = formData.get("name")?.toString() ?? "";
   const id = formData.get("id")?.toString() || null;
-  const lookupUnit = (formData.get("lookupUnit")?.toString() === "ifr" ? "ifr" : "vfr") as QuestionUnit;
 
   if (type !== "subjects" && type !== "stages") {
     redirect("/settings");
   }
 
   try {
-    const savedLookup = await upsertLookup(type, id, name, lookupUnit);
+    const lookupUnit = getAuthorizedUnitForUser(user, formData.get("lookupUnit"));
+    const savedLookup = await upsertLookup(type, id, name, lookupUnit, getAccessibleUnitsForUser(user));
     await logUserAudit(user, {
       action: id ? "lookup.updated" : "lookup.created",
       entityType: "lookup",
@@ -455,7 +526,10 @@ export async function deleteLookupAction(formData: FormData) {
     redirect("/settings");
   }
 
-  const deletedLookup = await deleteLookup(type, id);
+  const deletedLookup = await deleteLookup(type, id, getAccessibleUnitsForUser(user));
+  if (!deletedLookup) {
+    redirect(getLookupSettingsRedirect(formData, `lookupError=${encodeURIComponent("הערך לא נמצא או שאין הרשאה למחוק אותו.")}`));
+  }
   await logUserAudit(user, {
     action: "lookup.deleted",
     entityType: "lookup",
@@ -474,10 +548,14 @@ export async function deleteLookupAction(formData: FormData) {
 
 export async function saveRecipientListAction(formData: FormData) {
   const user = await requireEditor();
-  const recipientListUnit = (formData.get("recipientListUnit")?.toString() === "ifr" ? "ifr" : "vfr") as QuestionUnit;
+  let recipientListUnit: QuestionUnit = "vfr";
   const id = formData.get("id")?.toString() || null;
 
   try {
+    recipientListUnit = getAuthorizedUnitForUser(user, formData.get("recipientListUnit"));
+    if (id) {
+      await getAccessibleRecipientListOrThrow(user, id);
+    }
     const savedRecipientList = await upsertRecipientList({
       id,
       name: formData.get("name")?.toString() ?? "",
@@ -511,10 +589,12 @@ export async function saveRecipientListAction(formData: FormData) {
 
 export async function deleteRecipientListAction(formData: FormData) {
   const user = await requireEditor();
-  const recipientListUnit = (formData.get("recipientListUnit")?.toString() === "ifr" ? "ifr" : "vfr") as QuestionUnit;
+  let recipientListUnit: QuestionUnit = "vfr";
   const id = formData.get("id")?.toString() ?? "";
 
   try {
+    recipientListUnit = getAuthorizedUnitForUser(user, formData.get("recipientListUnit"));
+    await getAccessibleRecipientListOrThrow(user, id);
     const deletedRecipientList = await deleteRecipientList(id);
     await logUserAudit(user, {
       action: "recipient_list.deleted",
@@ -626,14 +706,17 @@ export async function deleteAllTestsAction(formData: FormData) {
 
 export async function deleteTestAction(formData: FormData) {
   const user = await requireAdmin();
+  const accessibleUnits = getAccessibleUnitsForUser(user);
   const testId = formData.get("testId")?.toString() ?? "";
-  const unit = formData.get("unit")?.toString();
+  const requestedUnit = getOptionalQuestionUnit(formData.get("unit"));
+  const unit = requestedUnit && accessibleUnits.includes(requestedUnit) ? requestedUnit : undefined;
 
   if (!testId) {
     redirect(buildTestsLibraryRedirectPath(unit));
   }
 
   try {
+    await getAccessibleTestOrThrow(user, testId);
     const deletedTest = await deleteTest(testId);
     await logUserAudit(user, {
       action: "test.deleted",
@@ -774,8 +857,8 @@ export async function saveBonusQuestionPointsAction(formData: FormData) {
 
 export async function createTestAction(formData: FormData) {
   const user = await requireEditor();
+  const accessibleUnits = getAccessibleUnitsForUser(user);
   const rawDuration = formData.get("durationMinutes")?.toString().trim() ?? "";
-  const selectedUnit = formData.get("unit")?.toString() === "ifr" ? "ifr" : "vfr";
   const recipientMode = getRecipientMode(formData.get("recipientMode"));
   const title = formData.get("title")?.toString() ?? "";
   const selectionMode = (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered" | "manual";
@@ -790,11 +873,19 @@ export async function createTestAction(formData: FormData) {
   const onlyAnswered = formData.get("onlyAnswered")?.toString() === "on";
   const singleStudentName = formData.get("studentName")?.toString() ?? "";
   const singleStudentEmail = formData.get("studentEmail")?.toString() ?? "";
+  let selectedUnit: QuestionUnit = "vfr";
+  let bonusSourceUnit: QuestionUnit | undefined;
   let redirectPath: RedirectPath | null = null;
 
   try {
+    selectedUnit = getAuthorizedUnitForUser(user, formData.get("unit"));
+    bonusSourceUnit = getOptionalQuestionUnit(formData.get("bonusSourceUnit"));
+    if (bonusSourceUnit) {
+      assertUserCanAccessUnit(user, bonusSourceUnit, "אין הרשאה למאגר שאלות הבונוס שנבחר.");
+    }
+
     if (recipientMode !== "single") {
-      const { recipients, listId, listName } = await resolveRecipients(formData, recipientMode);
+      const { recipients, listId, listName } = await resolveRecipients(user, formData, recipientMode);
       let createdCount = 0;
       let failedCount = 0;
       let sentCount = 0;
@@ -804,10 +895,11 @@ export async function createTestAction(formData: FormData) {
           title,
           createdBy: user.id,
           selectionMode,
-          unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
+          unit: selectedUnit,
+          allowedUnits: accessibleUnits,
           questionCount,
           bonusQuestionCount,
-          bonusSourceUnit: getOptionalQuestionUnit(formData.get("bonusSourceUnit")),
+          bonusSourceUnit,
           durationMinutes: rawDuration === "" ? undefined : Number(rawDuration),
           sentAt,
           onlyAnswered,
@@ -821,7 +913,7 @@ export async function createTestAction(formData: FormData) {
         });
 
         createdCount += 1;
-        const createdTest = await getTestById(testId);
+        const createdTest = await getTestById(testId, accessibleUnits);
         await logUserAudit(user, {
           action: "test.created",
           entityType: "test",
@@ -839,7 +931,7 @@ export async function createTestAction(formData: FormData) {
         try {
           await sendTestInvitationEmail(testId);
           sentCount += 1;
-          const sentTest = await getTestById(testId);
+          const sentTest = await getTestById(testId, accessibleUnits);
           await logUserAudit(user, {
             action: "test.invitation_email_sent",
             entityType: "test",
@@ -881,10 +973,11 @@ export async function createTestAction(formData: FormData) {
         title,
         createdBy: user.id,
         selectionMode,
-        unit: (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit,
+        unit: selectedUnit,
+        allowedUnits: accessibleUnits,
         questionCount,
         bonusQuestionCount,
-        bonusSourceUnit: getOptionalQuestionUnit(formData.get("bonusSourceUnit")),
+        bonusSourceUnit,
         durationMinutes: rawDuration === "" ? undefined : Number(rawDuration),
         sentAt,
         onlyAnswered,
@@ -896,7 +989,7 @@ export async function createTestAction(formData: FormData) {
         studentName: singleStudentName,
         studentEmail: singleStudentEmail,
       });
-      const test = await getTestById(id);
+      const test = await getTestById(id, accessibleUnits);
       await logUserAudit(user, {
         action: "test.created",
         entityType: "test",
@@ -916,7 +1009,7 @@ export async function createTestAction(formData: FormData) {
 
         try {
           await sendTestInvitationEmail(id);
-          const sentTest = await getTestById(id);
+          const sentTest = await getTestById(id, accessibleUnits);
           await logUserAudit(user, {
             action: "test.invitation_email_sent",
             entityType: "test",
@@ -955,16 +1048,32 @@ export async function createTestAction(formData: FormData) {
 }
 
 export async function prepareTestDraftAction(formData: FormData) {
-  await requireEditor();
+  const user = await requireEditor();
+  const accessibleUnits = getAccessibleUnitsForUser(user);
   const selectionMode = (formData.get("selectionMode")?.toString() ?? "random") as "random" | "filtered" | "manual";
   const recipientMode = getRecipientMode(formData.get("recipientMode"));
+  let unit: QuestionUnit = "vfr";
+  let bonusSourceUnit: QuestionUnit | undefined;
+  let redirectPath: RedirectPath | null = null;
+
+  try {
+    unit = getAuthorizedUnitForUser(user, formData.get("unit"));
+    bonusSourceUnit = getOptionalQuestionUnit(formData.get("bonusSourceUnit"));
+
+    if (bonusSourceUnit) {
+      assertUserCanAccessUnit(user, bonusSourceUnit, "אין הרשאה למאגר שאלות הבונוס שנבחר.");
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "יצירת טיוטת המבחן נכשלה";
+    redirect(buildNewTestFormRedirectPath(formData, message));
+  }
 
   if (recipientMode !== "single") {
     try {
       if (recipientMode === "manual_list") {
         parseRecipientData(formData.get("recipientData")?.toString() ?? "");
       } else {
-        await resolveRecipients(formData, recipientMode);
+        await resolveRecipients(user, formData, recipientMode);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "פרטי הנבחנים אינם תקינים";
@@ -977,13 +1086,11 @@ export async function prepareTestDraftAction(formData: FormData) {
   }
 
   try {
-    const unit = (formData.get("unit")?.toString() ?? "vfr") as QuestionUnit;
     const subjectIds = getMany(formData, "subjectIds");
     const stageIds = getMany(formData, "stageIds");
     const onlyAnswered = formData.get("onlyAnswered")?.toString() === "on";
     const questionCount = Number(formData.get("questionCount")?.toString() ?? "0");
     const bonusQuestionCount = Number(formData.get("bonusQuestionCount")?.toString() ?? "0");
-    let redirectPath: RedirectPath | null = null;
 
     const draft = await getTestDraftQuestions({
       selectionMode,
@@ -997,6 +1104,8 @@ export async function prepareTestDraftAction(formData: FormData) {
       bonusQuestionCount > 0
         ? await getBonusQuestionDraft({
             questionCount: bonusQuestionCount,
+            allowedUnits: accessibleUnits,
+            sourceUnit: bonusSourceUnit,
             excludeQuestionIds: draft.selectedQuestions.map((question) => question.id),
           })
         : null;
@@ -1035,23 +1144,23 @@ export async function prepareTestDraftAction(formData: FormData) {
       params.set("bonusSourceUnit", bonusDraft.sourceUnit);
     }
     redirectPath = `/tests/new/review?${params.toString()}` as RedirectPath;
-
-    if (!redirectPath) {
-      redirect(buildNewTestFormRedirectPath(formData, "יצירת טיוטת המבחן נכשלה"));
-    }
-
-    redirect(redirectPath);
   } catch (error) {
     const message = error instanceof Error ? error.message : "יצירת טיוטת המבחן נכשלה";
     redirect(buildNewTestFormRedirectPath(formData, message));
   }
+
+  if (!redirectPath) {
+    redirect(buildNewTestFormRedirectPath(formData, "יצירת טיוטת המבחן נכשלה"));
+  }
+
+  redirect(redirectPath);
 }
 
 export async function createShareLinkAction(formData: FormData) {
   const user = await requireEditor();
   const id = formData.get("id")?.toString() ?? "";
+  const test = await getAccessibleTestOrThrow(user, id);
   const shareToken = await ensureShareToken(id);
-  const test = await getTestById(id);
   await logUserAudit(user, {
     action: "test.share_link_created",
     entityType: "test",
@@ -1070,16 +1179,20 @@ export async function createShareLinkAction(formData: FormData) {
 
 export async function resendArchivedTestAction(formData: FormData) {
   const user = await requireEditor();
+  const accessibleUnits = getAccessibleUnitsForUser(user);
   const sourceTestId = formData.get("sourceTestId")?.toString() ?? "";
-  const unit = formData.get("unit")?.toString();
+  const requestedUnit = getOptionalQuestionUnit(formData.get("unit"));
+  const unit = requestedUnit && accessibleUnits.includes(requestedUnit) ? requestedUnit : undefined;
   const recipientMode = getRecipientMode(formData.get("recipientMode"));
   let redirectPath: RedirectPath | null = null;
 
   try {
+    const sourceTest = await getAccessibleTestOrThrow(user, sourceTestId);
+    const sourceUnit = sourceTest.unit;
+
     if (recipientMode !== "single") {
-      const { recipients, listId, listName } = await resolveRecipients(formData, recipientMode);
+      const { recipients, listId, listName } = await resolveRecipients(user, formData, recipientMode);
       const sentAt = formData.get("sentAt")?.toString() ?? "";
-      const sourceTest = await getTestById(sourceTestId);
       let createdCount = 0;
       let failedCount = 0;
       let sentCount = 0;
@@ -1094,7 +1207,7 @@ export async function resendArchivedTestAction(formData: FormData) {
         });
 
         const shareToken = await ensureShareToken(newTestId);
-        const newTest = await getTestById(newTestId);
+        const newTest = await getTestById(newTestId, accessibleUnits);
         createdCount += 1;
 
         await logUserAudit(user, {
@@ -1114,7 +1227,7 @@ export async function resendArchivedTestAction(formData: FormData) {
         try {
           await sendTestInvitationEmail(newTestId);
           sentCount += 1;
-          const sentTest = await getTestById(newTestId);
+          const sentTest = await getTestById(newTestId, accessibleUnits);
           await logUserAudit(user, {
             action: "test.invitation_email_sent",
             entityType: "test",
@@ -1143,13 +1256,13 @@ export async function resendArchivedTestAction(formData: FormData) {
           sentCount,
           sourceTestId,
           sourceTitle: sourceTest?.title ?? null,
-          unit: unit ?? sourceTest?.unit ?? null,
+          unit: sourceUnit,
         },
       });
 
       revalidateTestCollections();
       redirectPath = buildTestsLibraryRedirectPath(
-        unit,
+        sourceUnit,
         `bulkCreated=${createdCount}&bulkSent=${sentCount}&bulkFailed=${failedCount}`,
       );
     } else {
@@ -1162,7 +1275,7 @@ export async function resendArchivedTestAction(formData: FormData) {
       });
 
       const shareToken = await ensureShareToken(newTestId);
-      const [newTest, sourceTest] = await Promise.all([getTestById(newTestId), getTestById(sourceTestId)]);
+      const newTest = await getTestById(newTestId, accessibleUnits);
       await logUserAudit(user, {
         action: "test.cloned",
         entityType: "test",
@@ -1182,7 +1295,7 @@ export async function resendArchivedTestAction(formData: FormData) {
 
         try {
           await sendTestInvitationEmail(newTestId);
-          const sentTest = await getTestById(newTestId);
+          const sentTest = await getTestById(newTestId, accessibleUnits);
           await logUserAudit(user, {
             action: "test.invitation_email_sent",
             entityType: "test",
@@ -1222,14 +1335,14 @@ export async function resendArchivedTestAction(formData: FormData) {
 export async function updateTestDurationAction(formData: FormData) {
   const user = await requireEditor();
   const testId = formData.get("testId")?.toString() ?? "";
-  const shareToken = formData.get("shareToken")?.toString() ?? "";
+  const existingTest = await getAccessibleTestOrThrow(user, testId);
   const rawValue = formData.get("durationMinutes")?.toString().trim() ?? "";
 
   await updateTestDuration({
     testId,
     durationMinutes: rawValue === "" ? undefined : Number(rawValue),
   });
-  const test = await getTestById(testId);
+  const test = await getAccessibleTestOrThrow(user, testId);
   await logUserAudit(user, {
     action: "test.duration_updated",
     entityType: "test",
@@ -1241,8 +1354,8 @@ export async function updateTestDurationAction(formData: FormData) {
   });
 
   revalidatePath(`/tests/${testId}`);
-  if (shareToken) {
-    revalidatePath(`/share/${shareToken}`);
+  if (existingTest.shareToken) {
+    revalidatePath(`/share/${existingTest.shareToken}`);
   }
   redirect(`/tests/${testId}?durationSaved=1`);
 }
@@ -1340,6 +1453,7 @@ export async function gradeTestAction(formData: FormData) {
   const user = await requireEditor();
 
   const testId = formData.get("testId")?.toString() ?? "";
+  await getAccessibleTestOrThrow(user, testId);
   const ids = getMany(formData, "questionIds");
   const grades = ids.map((id) => ({
     id,
@@ -1382,10 +1496,12 @@ export async function gradeTestAction(formData: FormData) {
 export async function gradeTestWithAiAction(formData: FormData) {
   const user = await requireEditor();
   const testId = formData.get("testId")?.toString() ?? "";
+  const accessibleUnits = getAccessibleUnitsForUser(user);
+  await getAccessibleTestOrThrow(user, testId);
 
   try {
     await gradeTestWithAi(testId, user.displayName);
-    const gradedTest = await getTestById(testId);
+    const gradedTest = await getTestById(testId, accessibleUnits);
     await logUserAudit(user, {
       action: "test.graded_with_ai",
       entityType: "test",
@@ -1408,11 +1524,13 @@ export async function gradeTestWithAiAction(formData: FormData) {
 export async function sendGradeEmailAction(formData: FormData) {
   const user = await requireEditor();
   const testId = formData.get("testId")?.toString() ?? "";
+  const accessibleUnits = getAccessibleUnitsForUser(user);
+  await getAccessibleTestOrThrow(user, testId);
 
   let redirectPath = `/tests/${testId}?mail=sent` as RedirectPath;
   try {
     await sendGradeEmail(testId);
-    const test = await getTestById(testId);
+    const test = await getTestById(testId, accessibleUnits);
     await logUserAudit(user, {
       action: "test.grade_email_sent",
       entityType: "test",
@@ -1433,11 +1551,13 @@ export async function sendGradeEmailAction(formData: FormData) {
 export async function sendTestInvitationEmailAction(formData: FormData) {
   const user = await requireEditor();
   const testId = formData.get("testId")?.toString() ?? "";
+  const accessibleUnits = getAccessibleUnitsForUser(user);
+  await getAccessibleTestOrThrow(user, testId);
 
   let redirectPath = `/tests/${testId}?inviteMail=sent` as RedirectPath;
   try {
     await sendTestInvitationEmail(testId);
-    const test = await getTestById(testId);
+    const test = await getTestById(testId, accessibleUnits);
     await logUserAudit(user, {
       action: "test.invitation_email_sent",
       entityType: "test",

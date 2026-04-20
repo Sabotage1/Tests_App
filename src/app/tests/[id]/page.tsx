@@ -9,7 +9,7 @@ import {
   sendTestInvitationEmailAction,
   updateTestDurationAction,
 } from "@/app/actions";
-import { requireUser } from "@/lib/auth";
+import { getAccessibleUnitsForUser, requireUser } from "@/lib/auth";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { SubmitButton } from "@/components/SubmitButton";
 import { getDefaultTestDurationMinutes, getTestById } from "@/lib/repository";
@@ -61,7 +61,10 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
   const user = await requireUser();
   const { id } = await params;
   const query = await searchParams;
-  const [test, defaultDurationMinutes] = await Promise.all([getTestById(id), getDefaultTestDurationMinutes()]);
+  const [test, defaultDurationMinutes] = await Promise.all([
+    getTestById(id, getAccessibleUnitsForUser(user)),
+    getDefaultTestDurationMinutes(),
+  ]);
   const solvedMinutes = test ? getSolvedMinutes(test.startedAt, test.submittedAt) : null;
 
   if (!test) {

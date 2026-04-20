@@ -5,11 +5,6 @@ import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import { DEFAULT_BONUS_QUESTION_POINTS, DEFAULT_DURATION_MINUTES } from "@/lib/constants";
 import { getSeedQuestions, getSeedStages, getSeedSubjects } from "@/lib/seed";
 
-const DEVELOPMENT_INITIAL_USERS = [
-  { username: "roy", displayName: "Roy", password: "Roy123!", role: "admin" as const },
-  { username: "neta", displayName: "Neta", password: "Neta123!", role: "editor" as const },
-];
-
 declare global {
   // eslint-disable-next-line no-var
   var __atcPool__: Pool | undefined;
@@ -24,10 +19,6 @@ const SUBJECT_SEED_COMPLETED_KEY = "subject_seed_completed";
 const STAGE_SEED_COMPLETED_KEY = "stage_seed_completed";
 
 function getInitialUsers() {
-  if (process.env.NODE_ENV !== "production") {
-    return DEVELOPMENT_INITIAL_USERS;
-  }
-
   const users: Array<{
     username: string;
     displayName: string;
@@ -211,10 +202,19 @@ async function createSchema(client: PoolClient) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS login_attempts (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL,
+      ip_address TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs (created_at DESC);
     CREATE INDEX IF NOT EXISTS audit_logs_entity_type_idx ON audit_logs (entity_type, created_at DESC);
     CREATE INDEX IF NOT EXISTS recipient_lists_unit_name_idx ON recipient_lists (unit, name);
     CREATE INDEX IF NOT EXISTS recipient_list_members_list_order_idx ON recipient_list_members (recipient_list_id, order_index);
+    CREATE INDEX IF NOT EXISTS login_attempts_username_created_at_idx ON login_attempts (username, created_at DESC);
+    CREATE INDEX IF NOT EXISTS login_attempts_ip_created_at_idx ON login_attempts (ip_address, created_at DESC);
 
     ALTER TABLE tests ADD COLUMN IF NOT EXISTS graded_by_name TEXT;
     ALTER TABLE questions ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
@@ -247,6 +247,9 @@ async function createSchema(client: PoolClient) {
     UPDATE users
     SET units = ARRAY['vfr', 'ifr']::TEXT[]
     WHERE units IS NULL OR cardinality(units) = 0;
+
+    DELETE FROM login_attempts
+    WHERE created_at < NOW() - INTERVAL '1 day';
   `);
 
   await client.query(`

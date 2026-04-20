@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { logoutAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
-import { getCurrentUser } from "@/lib/auth";
+import { getAccessibleUnitsForUser, getCurrentUser } from "@/lib/auth";
 import { APP_NAME, APP_VERSION } from "@/lib/constants";
 import { getPendingReviewCount } from "@/lib/repository";
 
@@ -35,7 +35,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   }
 
   const currentUser = user;
-  const pendingReviewCount = await getPendingReviewCount();
+  const pendingReviewCount = await getPendingReviewCount(getAccessibleUnitsForUser(currentUser));
   const reviewBadge = pendingReviewCount > 99 ? "99+" : String(pendingReviewCount);
 
   function SidebarContent() {

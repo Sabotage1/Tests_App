@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { requireUser } from "@/lib/auth";
+import { getAccessibleUnitsForUser, requireUser } from "@/lib/auth";
 import { TEST_STATUSES, type TestStatus } from "@/lib/constants";
 import { getDashboardStats, getTests } from "@/lib/repository";
 
@@ -20,9 +20,10 @@ function isValidStatus(status: string | undefined): status is TestStatus {
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
-  await requireUser();
+  const user = await requireUser();
   const params = await searchParams;
-  const [stats, tests] = await Promise.all([getDashboardStats(), getTests()]);
+  const accessibleUnits = getAccessibleUnitsForUser(user);
+  const [stats, tests] = await Promise.all([getDashboardStats(accessibleUnits), getTests(accessibleUnits)]);
   const selectedStatus = isValidStatus(params.status) ? params.status : null;
   const filteredTests = selectedStatus ? tests.filter((test) => test.status === selectedStatus) : tests;
 

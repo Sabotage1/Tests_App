@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { requireUser } from "@/lib/auth";
+import { getAccessibleUnitsForUser, requireUser } from "@/lib/auth";
 import { PrintButton } from "@/components/PrintButton";
 import { getTestById } from "@/lib/repository";
 
@@ -14,9 +14,9 @@ function getPerformedAtLabel(startedAt: string | null, submittedAt: string | nul
 }
 
 export default async function PrintTestPage({ params }: PrintPageProps) {
-  await requireUser();
+  const user = await requireUser();
   const { id } = await params;
-  const test = await getTestById(id);
+  const test = await getTestById(id, getAccessibleUnitsForUser(user));
 
   if (!test) {
     notFound();
