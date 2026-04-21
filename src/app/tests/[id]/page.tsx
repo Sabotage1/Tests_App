@@ -11,6 +11,7 @@ import {
 } from "@/app/actions";
 import { getAccessibleUnitsForUser, requireUser } from "@/lib/auth";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { MultipleChoicePreview } from "@/components/MultipleChoicePreview";
 import { SubmitButton } from "@/components/SubmitButton";
 import { getDefaultTestDurationMinutes, getTestById } from "@/lib/repository";
 
@@ -207,12 +208,40 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
                     </span>
                   ))}
                 </div>
-                <p className="muted" style={{ whiteSpace: "pre-wrap" }}>
-                  תשובה צפויה: {question.expectedAnswer}
-                </p>
-                {question.studentAnswer ? (
-                  <p style={{ whiteSpace: "pre-wrap" }}>תשובת תלמיד: {question.studentAnswer}</p>
-                ) : null}
+                {question.questionType === "multiple_choice" ? (
+                  <div className="stack">
+                    <div>
+                      <strong>תשובות נכונות</strong>
+                      <MultipleChoicePreview
+                        choiceMode={question.choiceMode}
+                        options={question.choiceOptions}
+                        showCorrectAnswers
+                        showMultipleHint
+                      />
+                    </div>
+                    {question.studentAnswerOptionIds.length > 0 ? (
+                      <div>
+                        <strong>תשובת תלמיד</strong>
+                        <MultipleChoicePreview
+                          choiceMode={question.choiceMode}
+                          options={question.choiceOptions}
+                          selectedOptionIds={question.studentAnswerOptionIds}
+                          showCorrectAnswers
+                          showMultipleHint
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <>
+                    <p className="muted" style={{ whiteSpace: "pre-wrap" }}>
+                      תשובה צפויה: {question.expectedAnswer}
+                    </p>
+                    {question.studentAnswer ? (
+                      <p style={{ whiteSpace: "pre-wrap" }}>תשובת תלמיד: {question.studentAnswer}</p>
+                    ) : null}
+                  </>
+                )}
               </div>
             ))}
           </div>

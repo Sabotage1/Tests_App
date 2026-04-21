@@ -55,12 +55,26 @@ import {
   upsertLookup,
   upsertQuestion,
 } from "@/lib/repository";
+import { getChoiceMode, normalizeChoiceOptions, serializeChoiceAnswer } from "@/lib/multiple-choice";
 
 function getMany(formData: FormData, name: string) {
   return formData
     .getAll(name)
     .map((value) => value.toString())
     .filter(Boolean);
+}
+
+function getChoiceOptionsFromFormData(formData: FormData) {
+  const rawValue = formData.get("choiceData")?.toString().trim() ?? "";
+  if (!rawValue) {
+    return [];
+  }
+
+  try {
+    return normalizeChoiceOptions(JSON.parse(rawValue));
+  } catch {
+    throw new Error("אפשרויות הרב ברירה אינן בפורמט תקין.");
+  }
 }
 
 function getOptionalQuestionUnit(value: FormDataEntryValue | null) {
@@ -398,6 +412,8 @@ export async function saveQuestionAction(formData: FormData) {
       text: formData.get("text")?.toString() ?? "",
       answer: formData.get("answer")?.toString() ?? "",
       questionType: formData.get("questionType")?.toString() ?? "open",
+      choiceMode: getChoiceMode(formData.get("choiceMode")?.toString()),
+      choiceOptions: getChoiceOptionsFromFormData(formData),
       isBonusSource: formData.get("isBonusSource")?.toString() === "on",
       unit,
       source: formData.get("source")?.toString() ?? "הוזן ידנית",
@@ -1400,7 +1416,10 @@ export async function submitSharedTestAction(formData: FormData) {
   const ids = getMany(formData, "questionIds");
   const answers = ids.map((id) => ({
     id,
-    answer: formData.get(`answer:${id}`)?.toString() ?? "",
+    answer:
+      formData.get(`questionType:${id}`)?.toString() === "multiple_choice"
+        ? serializeChoiceAnswer(formData.getAll(`answer:${id}`).map((value) => value.toString()))
+        : formData.get(`answer:${id}`)?.toString() ?? "",
   }));
   let testId = "";
 

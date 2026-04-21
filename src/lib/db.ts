@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 
 import { DEFAULT_BONUS_QUESTION_POINTS, DEFAULT_DURATION_MINUTES } from "@/lib/constants";
+import { buildChoiceAnswerText, buildLegacyMultipleChoicePayload, normalizeChoiceOptions } from "@/lib/multiple-choice";
 import { getSeedQuestions, getSeedStages, getSeedSubjects } from "@/lib/seed";
 
 declare global {
@@ -107,6 +108,8 @@ async function createSchema(client: PoolClient) {
       text TEXT NOT NULL,
       answer TEXT NOT NULL,
       question_type TEXT NOT NULL,
+      choice_mode TEXT,
+      choice_options JSONB,
       unit TEXT NOT NULL DEFAULT 'vfr',
       source TEXT NOT NULL,
       source_reference TEXT,
@@ -157,6 +160,9 @@ async function createSchema(client: PoolClient) {
       order_index INTEGER NOT NULL,
       is_bonus BOOLEAN NOT NULL DEFAULT FALSE,
       prompt TEXT NOT NULL,
+      question_type TEXT NOT NULL DEFAULT 'open',
+      choice_mode TEXT,
+      choice_options JSONB,
       expected_answer TEXT NOT NULL,
       subject_names TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
       stage_names TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
@@ -222,6 +228,11 @@ async function createSchema(client: PoolClient) {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS review_notifications_enabled BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS units TEXT[] NOT NULL DEFAULT ARRAY['vfr', 'ifr']::TEXT[];
     ALTER TABLE test_questions ADD COLUMN IF NOT EXISTS is_bonus BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE questions ADD COLUMN IF NOT EXISTS choice_mode TEXT;
+    ALTER TABLE questions ADD COLUMN IF NOT EXISTS choice_options JSONB;
+    ALTER TABLE test_questions ADD COLUMN IF NOT EXISTS question_type TEXT NOT NULL DEFAULT 'open';
+    ALTER TABLE test_questions ADD COLUMN IF NOT EXISTS choice_mode TEXT;
+    ALTER TABLE test_questions ADD COLUMN IF NOT EXISTS choice_options JSONB;
     ALTER TABLE questions ADD COLUMN IF NOT EXISTS is_bonus_source BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE subjects ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
     ALTER TABLE stages ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'vfr';
@@ -373,18 +384,22 @@ async function seedQuestions(client: PoolClient) {
 
   for (const question of getSeedQuestions()) {
     const questionId = nanoid();
+    const choicePayload =
+      question.questionType === "multiple_choice" ? buildLegacyMultipleChoicePayload(question.text, question.answer) : null;
     await client.query(
       `
         INSERT INTO questions (
-          id, text, answer, question_type, source, source_reference, is_active, created_at, updated_at
+          id, text, answer, question_type, choice_mode, choice_options, source, source_reference, is_active, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9, $10)
       `,
       [
         questionId,
-        question.text,
-        question.answer,
+        choicePayload?.text ?? question.text,
+        choicePayload?.answer ?? question.answer,
         question.questionType,
+        choicePayload?.choiceMode ?? null,
+        choicePayload ? JSON.stringify(choicePayload.choiceOptions) : null,
         question.source,
         question.sourceReference,
         now,
@@ -436,6 +451,118 @@ async function seedSettings(client: PoolClient) {
   );
 }
 
+async function migrateStructuredQuestionChoices(client: PoolClient) {
+  const result = await client.query<{
+    id: string;
+    text: string;
+    answer: string;
+    question_type: string;
+    choice_mode: string | null;
+    choice_options: unknown;
+  }>(`
+    SELECT id, text, answer, question_type, choice_mode, choice_options
+    FROM questions
+    WHERE question_type = 'multiple_choice'
+       OR choice_options IS NOT NULL
+  `);
+
+  for (const row of result.rows) {
+    const existingOptions = normalizeChoiceOptions(row.choice_options);
+    if (existingOptions.length >= 2) {
+      const correctCount = existingOptions.filter((option) => option.isCorrect).length;
+      const choiceMode = row.choice_mode === "multiple" || correctCount > 1 ? "multiple" : "single";
+      const answer = buildChoiceAnswerText(existingOptions);
+
+      await client.query(
+        `
+          UPDATE questions
+          SET question_type = 'multiple_choice',
+              choice_mode = $1,
+              choice_options = $2::jsonb,
+              answer = $3,
+              updated_at = NOW()
+          WHERE id = $4
+        `,
+        [choiceMode, JSON.stringify(existingOptions), answer, row.id],
+      );
+      continue;
+    }
+
+    const parsed = buildLegacyMultipleChoicePayload(row.text, row.answer);
+    if (!parsed) {
+      continue;
+    }
+
+    await client.query(
+      `
+        UPDATE questions
+        SET text = $1,
+            answer = $2,
+            question_type = 'multiple_choice',
+            choice_mode = $3,
+            choice_options = $4::jsonb,
+            updated_at = NOW()
+        WHERE id = $5
+      `,
+      [parsed.text, parsed.answer, parsed.choiceMode, JSON.stringify(parsed.choiceOptions), row.id],
+    );
+  }
+}
+
+async function migrateStructuredTestQuestionChoices(client: PoolClient) {
+  const result = await client.query<{
+    id: string;
+    prompt: string;
+    expected_answer: string;
+    question_type: string;
+    choice_mode: string | null;
+    choice_options: unknown;
+  }>(`
+    SELECT id, prompt, expected_answer, question_type, choice_mode, choice_options
+    FROM test_questions
+  `);
+
+  for (const row of result.rows) {
+    const existingOptions = normalizeChoiceOptions(row.choice_options);
+    if (existingOptions.length >= 2) {
+      const correctCount = existingOptions.filter((option) => option.isCorrect).length;
+      const choiceMode = row.choice_mode === "multiple" || correctCount > 1 ? "multiple" : "single";
+      const expectedAnswer = buildChoiceAnswerText(existingOptions);
+
+      await client.query(
+        `
+          UPDATE test_questions
+          SET question_type = 'multiple_choice',
+              choice_mode = $1,
+              choice_options = $2::jsonb,
+              expected_answer = $3
+          WHERE id = $4
+        `,
+        [choiceMode, JSON.stringify(existingOptions), expectedAnswer, row.id],
+      );
+      continue;
+    }
+
+    const parsed = buildLegacyMultipleChoicePayload(row.prompt, row.expected_answer);
+    if (!parsed) {
+      continue;
+    }
+
+    await client.query(
+      `
+        UPDATE test_questions
+        SET prompt = $1,
+            question_type = 'multiple_choice',
+            choice_mode = $2,
+            choice_options = $3::jsonb,
+            expected_answer = $4
+        WHERE id = $5
+      `,
+      [parsed.text, parsed.choiceMode, JSON.stringify(parsed.choiceOptions), parsed.answer, row.id],
+    );
+  }
+}
+
 async function initializeDatabase() {
   const pool = getPool();
   const client = await pool.connect();
@@ -448,6 +575,8 @@ async function initializeDatabase() {
     await seedLookupTable(client, "stages", getSeedStages());
     await seedQuestions(client);
     await seedSettings(client);
+    await migrateStructuredQuestionChoices(client);
+    await migrateStructuredTestQuestionChoices(client);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");

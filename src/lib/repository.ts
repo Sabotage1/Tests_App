@@ -13,11 +13,22 @@ import {
   type UserRole,
 } from "@/lib/constants";
 import { query, withTransaction } from "@/lib/db";
+import {
+  buildChoiceAnswerText,
+  buildLegacyMultipleChoicePayload,
+  describeChoiceSelection,
+  getChoiceMode,
+  normalizeChoiceOptions,
+  parseChoiceAnswer,
+} from "@/lib/multiple-choice";
 import type {
   AuditLogEntry,
+  ChoiceMode,
+  ChoiceOption,
   DashboardStats,
   Option,
   QuestionRow,
+  QuestionType,
   RecipientList,
   RecipientListMember,
   TestBuilderQuestion,
@@ -79,6 +90,64 @@ function normalizeSourceReference(value: string | null | undefined) {
   return normalized === "" ? null : normalized;
 }
 
+function normalizeQuestionType(value: string | null | undefined): QuestionType {
+  return value === "multiple_choice" ? "multiple_choice" : "open";
+}
+
+function getQuestionChoices(input: {
+  text: string;
+  answer: string;
+  questionType: string | null | undefined;
+  choiceMode?: string | null;
+  choiceOptions?: unknown;
+}) {
+  const questionType = normalizeQuestionType(input.questionType);
+  if (questionType !== "multiple_choice") {
+    return {
+      questionType,
+      text: input.text,
+      answer: input.answer,
+      choiceMode: null,
+      choiceOptions: [] as ChoiceOption[],
+      studentAnswerOptionIds: [] as string[],
+    };
+  }
+
+  const normalizedOptions = normalizeChoiceOptions(input.choiceOptions);
+  if (normalizedOptions.length >= 2) {
+    const normalizedChoiceMode = getChoiceMode(input.choiceMode) ?? (normalizedOptions.filter((option) => option.isCorrect).length > 1 ? "multiple" : "single");
+    return {
+      questionType,
+      text: input.text,
+      answer: buildChoiceAnswerText(normalizedOptions),
+      choiceMode: normalizedChoiceMode,
+      choiceOptions: normalizedOptions,
+      studentAnswerOptionIds: [] as string[],
+    };
+  }
+
+  const parsedLegacyQuestion = buildLegacyMultipleChoicePayload(input.text, input.answer);
+  if (!parsedLegacyQuestion) {
+    return {
+      questionType: "open" as const,
+      text: input.text,
+      answer: input.answer,
+      choiceMode: null,
+      choiceOptions: [] as ChoiceOption[],
+      studentAnswerOptionIds: [] as string[],
+    };
+  }
+
+  return {
+    questionType,
+    text: parsedLegacyQuestion.text,
+    answer: parsedLegacyQuestion.answer,
+    choiceMode: parsedLegacyQuestion.choiceMode,
+    choiceOptions: parsedLegacyQuestion.choiceOptions,
+    studentAnswerOptionIds: [] as string[],
+  };
+}
+
 const LOGIN_USERNAME_FAILURE_LIMIT = 5;
 const LOGIN_IP_FAILURE_LIMIT = 20;
 const LOGIN_FAILURE_WINDOW_MINUTES = 15;
@@ -106,6 +175,55 @@ type LoginRateLimitState = {
 function hasExpectedAnswer(answer: string) {
   const normalizedAnswer = answer.trim();
   return normalizedAnswer !== "" && normalizedAnswer !== MISSING_ANSWER_TEXT;
+}
+
+function normalizeQuestionPayload(input: {
+  text: string;
+  answer: string;
+  questionType: string;
+  choiceMode?: ChoiceMode | null;
+  choiceOptions?: ChoiceOption[];
+}) {
+  const questionType = normalizeQuestionType(input.questionType);
+  const text = input.text.trim();
+
+  if (!text) {
+    throw new Error("יש להזין נוסח שאלה.");
+  }
+
+  if (questionType === "open") {
+    return {
+      text,
+      answer: input.answer.trim() || MISSING_ANSWER_TEXT,
+      questionType,
+      choiceMode: null,
+      choiceOptions: [] as ChoiceOption[],
+    };
+  }
+
+  const choiceOptions = normalizeChoiceOptions(input.choiceOptions);
+  if (choiceOptions.length < 2) {
+    throw new Error("בשאלת רב ברירה יש להזין לפחות שתי אפשרויות.");
+  }
+
+  const correctOptions = choiceOptions.filter((option) => option.isCorrect);
+  const choiceMode = input.choiceMode === "multiple" ? "multiple" : "single";
+
+  if (correctOptions.length === 0) {
+    throw new Error("יש לסמן לפחות תשובה נכונה אחת.");
+  }
+
+  if (choiceMode === "single" && correctOptions.length !== 1) {
+    throw new Error("בשאלת רב ברירה עם תשובה אחת ניתן לסמן רק תשובה נכונה אחת.");
+  }
+
+  return {
+    text,
+    answer: buildChoiceAnswerText(choiceOptions),
+    questionType,
+    choiceMode,
+    choiceOptions,
+  };
 }
 
 function pickRandomItem<T>(items: T[]) {
@@ -219,11 +337,21 @@ export async function getAuditLogs(input?: {
 }
 
 function mapTestBuilderQuestion(row: QuestionSelectionRow): TestBuilderQuestion {
-  return {
-    id: row.id,
+  const choiceData = getQuestionChoices({
     text: row.text,
     answer: row.answer,
     questionType: row.question_type,
+    choiceMode: row.choice_mode,
+    choiceOptions: row.choice_options,
+  });
+
+  return {
+    id: row.id,
+    text: choiceData.text,
+    answer: choiceData.answer,
+    questionType: choiceData.questionType,
+    choiceMode: choiceData.choiceMode,
+    choiceOptions: choiceData.choiceOptions,
     isBonusSource: row.is_bonus_source,
     unit: row.unit,
     source: row.source,
@@ -252,7 +380,9 @@ type QuestionSelectionRow = {
   id: string;
   text: string;
   answer: string;
-  question_type: string;
+  question_type: QuestionType;
+  choice_mode: string | null;
+  choice_options: unknown;
   is_bonus_source: boolean;
   unit: QuestionUnit;
   source: string;
@@ -292,7 +422,9 @@ type QuestionBankExportRow = {
   id: string;
   text: string;
   answer: string;
-  questionType: string;
+  questionType: QuestionType;
+  choiceMode: string | null;
+  choiceOptions: unknown;
   isBonusSource: boolean;
   unit: QuestionUnit;
   source: string;
@@ -305,6 +437,52 @@ type QuestionBankExportRow = {
   subjectNames: string[] | null;
   stageNames: string[] | null;
 };
+
+function mapQuestionRecord(row: {
+  id: string;
+  text: string;
+  answer: string;
+  questionType: QuestionType;
+  choiceMode: string | null;
+  choiceOptions: unknown;
+  isBonusSource: boolean;
+  unit: QuestionUnit;
+  source: string;
+  sourceReference: string | null;
+  isActive: number | boolean;
+  updatedAt: string;
+  subjectIds: string[] | null;
+  stageIds: string[] | null;
+  subjectNames: string[] | null;
+  stageNames: string[] | null;
+}): QuestionRow {
+  const choiceData = getQuestionChoices({
+    text: row.text,
+    answer: row.answer,
+    questionType: row.questionType,
+    choiceMode: row.choiceMode,
+    choiceOptions: row.choiceOptions,
+  });
+
+  return {
+    id: row.id,
+    text: choiceData.text,
+    answer: choiceData.answer,
+    questionType: choiceData.questionType,
+    choiceMode: choiceData.choiceMode,
+    choiceOptions: choiceData.choiceOptions,
+    isBonusSource: row.isBonusSource,
+    unit: row.unit,
+    source: row.source,
+    sourceReference: row.sourceReference,
+    subjectIds: formatArray(row.subjectIds),
+    stageIds: formatArray(row.stageIds),
+    subjectNames: formatArray(row.subjectNames),
+    stageNames: formatArray(row.stageNames),
+    updatedAt: row.updatedAt,
+    isActive: Number(row.isActive),
+  };
+}
 
 function escapeHtml(value: string) {
   return value
@@ -863,6 +1041,8 @@ export async function getQuestionBankExport() {
         q.text,
         q.answer,
         q.question_type AS "questionType",
+        q.choice_mode AS "choiceMode",
+        q.choice_options AS "choiceOptions",
         q.is_bonus_source AS "isBonusSource",
         q.unit,
         q.source,
@@ -890,7 +1070,7 @@ export async function getQuestionBankExport() {
   ]);
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportType: "question-bank",
     appName: APP_NAME,
     appVersion: APP_VERSION,
@@ -915,21 +1095,25 @@ export async function getQuestionBankExport() {
       updatedAt: row.updated_at,
     })),
     questions: questionsResult.rows.map((row) => ({
-      id: row.id,
-      text: row.text,
-      answer: row.answer,
-      questionType: row.questionType,
-      isBonusSource: row.isBonusSource,
-      unit: row.unit,
-      source: row.source,
-      sourceReference: row.sourceReference,
-      isActive: row.isActive,
+      ...mapQuestionRecord({
+        id: row.id,
+        text: row.text,
+        answer: row.answer,
+        questionType: row.questionType,
+        choiceMode: row.choiceMode,
+        choiceOptions: row.choiceOptions,
+        isBonusSource: row.isBonusSource,
+        unit: row.unit,
+        source: row.source,
+        sourceReference: row.sourceReference,
+        isActive: row.isActive,
+        updatedAt: row.updatedAt,
+        subjectIds: row.subjectIds,
+        stageIds: row.stageIds,
+        subjectNames: row.subjectNames,
+        stageNames: row.stageNames,
+      }),
       createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-      subjectIds: formatArray(row.subjectIds),
-      stageIds: formatArray(row.stageIds),
-      subjectNames: formatArray(row.subjectNames),
-      stageNames: formatArray(row.stageNames),
     })),
   };
 }
@@ -1264,6 +1448,8 @@ async function getQuestionPoolsForTestBuilder(input: {
         q.text,
         q.answer,
         q.question_type,
+        q.choice_mode,
+        q.choice_options,
         q.is_bonus_source,
         q.unit,
         q.source,
@@ -1487,6 +1673,8 @@ export async function getQuestionById(id: string, units?: QuestionUnit | Questio
         q.text,
         q.answer,
         q.question_type AS "questionType",
+        q.choice_mode AS "choiceMode",
+        q.choice_options AS "choiceOptions",
         q.is_bonus_source AS "isBonusSource",
         q.unit,
         q.source,
@@ -1509,7 +1697,7 @@ export async function getQuestionById(id: string, units?: QuestionUnit | Questio
     values,
   );
 
-  return result.rows[0] ?? null;
+  return result.rows[0] ? mapQuestionRecord(result.rows[0]) : null;
 }
 
 export async function getQuestions(units?: QuestionUnit | QuestionUnit[]) {
@@ -1523,6 +1711,8 @@ export async function getQuestions(units?: QuestionUnit | QuestionUnit[]) {
       q.text,
       q.answer,
       q.question_type AS "questionType",
+      q.choice_mode AS "choiceMode",
+      q.choice_options AS "choiceOptions",
       q.is_bonus_source AS "isBonusSource",
       q.unit,
       q.source,
@@ -1547,7 +1737,7 @@ export async function getQuestions(units?: QuestionUnit | QuestionUnit[]) {
       q.created_at ASC
   `, values);
 
-  return result.rows;
+  return result.rows.map(mapQuestionRecord);
 }
 
 export async function upsertQuestion(input: {
@@ -1555,6 +1745,8 @@ export async function upsertQuestion(input: {
   text: string;
   answer: string;
   questionType: string;
+  choiceMode?: ChoiceMode | null;
+  choiceOptions?: ChoiceOption[];
   isBonusSource?: boolean;
   unit: QuestionUnit;
   source: string;
@@ -1564,6 +1756,7 @@ export async function upsertQuestion(input: {
 }) {
   const questionId = input.id ?? nanoid();
   const isBonusSource = Boolean(input.isBonusSource);
+  const normalizedQuestion = normalizeQuestionPayload(input);
 
   await withTransaction(async (client) => {
     const subjectIds = await validateLookupIdsForUnit(client, "subjects", input.subjectIds, input.unit, "נושאים");
@@ -1614,17 +1807,21 @@ export async function upsertQuestion(input: {
           SET text = $1,
               answer = $2,
               question_type = $3,
-              is_bonus_source = $4,
-              unit = $5,
-              source = $6,
-              source_reference = $7,
+              choice_mode = $4,
+              choice_options = $5::jsonb,
+              is_bonus_source = $6,
+              unit = $7,
+              source = $8,
+              source_reference = $9,
               updated_at = NOW()
-          WHERE id = $8
+          WHERE id = $10
         `,
         [
-          input.text.trim(),
-          input.answer.trim() || MISSING_ANSWER_TEXT,
-          input.questionType,
+          normalizedQuestion.text,
+          normalizedQuestion.answer,
+          normalizedQuestion.questionType,
+          normalizedQuestion.choiceMode,
+          JSON.stringify(normalizedQuestion.choiceOptions),
           isBonusSource,
           input.unit,
           input.source.trim(),
@@ -1636,15 +1833,17 @@ export async function upsertQuestion(input: {
       await client.query(
         `
           INSERT INTO questions (
-            id, text, answer, question_type, is_bonus_source, unit, source, source_reference, is_active, created_at, updated_at
+            id, text, answer, question_type, choice_mode, choice_options, is_bonus_source, unit, source, source_reference, is_active, created_at, updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, NOW(), NOW())
+          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10, TRUE, NOW(), NOW())
         `,
         [
           questionId,
-          input.text.trim(),
-          input.answer.trim() || MISSING_ANSWER_TEXT,
-          input.questionType,
+          normalizedQuestion.text,
+          normalizedQuestion.answer,
+          normalizedQuestion.questionType,
+          normalizedQuestion.choiceMode,
+          JSON.stringify(normalizedQuestion.choiceOptions),
           isBonusSource,
           input.unit,
           input.source.trim(),
@@ -1909,9 +2108,9 @@ export async function createTest(input: {
       await client.query(
         `
           INSERT INTO test_questions (
-            id, test_id, question_id, order_index, is_bonus, prompt, expected_answer, subject_names, stage_names
+            id, test_id, question_id, order_index, is_bonus, prompt, question_type, choice_mode, choice_options, expected_answer, subject_names, stage_names
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12)
         `,
         [
           nanoid(),
@@ -1920,6 +2119,9 @@ export async function createTest(input: {
           orderIndex,
           false,
           question.text,
+          question.questionType,
+          question.choiceMode,
+          JSON.stringify(question.choiceOptions),
           question.answer,
           question.subjectNames,
           question.stageNames,
@@ -1932,9 +2134,9 @@ export async function createTest(input: {
       await client.query(
         `
           INSERT INTO test_questions (
-            id, test_id, question_id, order_index, is_bonus, prompt, expected_answer, subject_names, stage_names
+            id, test_id, question_id, order_index, is_bonus, prompt, question_type, choice_mode, choice_options, expected_answer, subject_names, stage_names
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12)
         `,
         [
           nanoid(),
@@ -1943,6 +2145,9 @@ export async function createTest(input: {
           orderIndex,
           true,
           question.text,
+          question.questionType,
+          question.choiceMode,
+          JSON.stringify(question.choiceOptions),
           question.answer,
           question.subjectNames,
           question.stageNames,
@@ -1996,9 +2201,9 @@ export async function cloneTestForNewStudent(input: {
       await client.query(
         `
           INSERT INTO test_questions (
-            id, test_id, question_id, order_index, is_bonus, prompt, expected_answer, subject_names, stage_names
+            id, test_id, question_id, order_index, is_bonus, prompt, question_type, choice_mode, choice_options, expected_answer, subject_names, stage_names
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12)
         `,
         [
           nanoid(),
@@ -2007,6 +2212,9 @@ export async function cloneTestForNewStudent(input: {
           question.orderIndex,
           question.isBonus,
           question.prompt,
+          question.questionType,
+          question.choiceMode,
+          JSON.stringify(question.choiceOptions),
           question.expectedAnswer,
           question.subjectNames,
           question.stageNames,
@@ -2104,6 +2312,9 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string, units?: Quest
     order_index: number;
     is_bonus: boolean;
     prompt: string;
+    question_type: QuestionType;
+    choice_mode: string | null;
+    choice_options: unknown;
     expected_answer: string;
     student_answer: string | null;
     score: string | null;
@@ -2117,6 +2328,9 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string, units?: Quest
         order_index,
         is_bonus,
         prompt,
+        question_type,
+        choice_mode,
+        choice_options,
         expected_answer,
         student_answer,
         score::text,
@@ -2152,18 +2366,37 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string, units?: Quest
     studentName: test.student_name,
     studentEmail: test.student_email,
     creatorName: test.creator_name,
-    questions: questionsResult.rows.map((row) => ({
-      id: row.id,
-      orderIndex: row.order_index,
-      isBonus: row.is_bonus,
-      prompt: row.prompt,
-      expectedAnswer: row.expected_answer,
-      studentAnswer: row.student_answer,
-      score: toNumber(row.score),
-      feedback: row.feedback,
-      subjectNames: formatArray(row.subject_names),
-      stageNames: formatArray(row.stage_names),
-    })),
+    questions: questionsResult.rows.map((row) => {
+      const choiceData = getQuestionChoices({
+        text: row.prompt,
+        answer: row.expected_answer,
+        questionType: row.question_type,
+        choiceMode: row.choice_mode,
+        choiceOptions: row.choice_options,
+      });
+      const studentAnswerOptionIds =
+        choiceData.questionType === "multiple_choice" ? parseChoiceAnswer(row.student_answer) : [];
+
+      return {
+        id: row.id,
+        orderIndex: row.order_index,
+        isBonus: row.is_bonus,
+        prompt: choiceData.text,
+        questionType: choiceData.questionType,
+        choiceMode: choiceData.choiceMode,
+        choiceOptions: choiceData.choiceOptions,
+        expectedAnswer: choiceData.answer,
+        studentAnswer:
+          choiceData.questionType === "multiple_choice"
+            ? describeChoiceSelection(choiceData.choiceOptions, studentAnswerOptionIds) || null
+            : row.student_answer,
+        studentAnswerOptionIds,
+        score: toNumber(row.score),
+        feedback: row.feedback,
+        subjectNames: formatArray(row.subject_names),
+        stageNames: formatArray(row.stage_names),
+      };
+    }),
   } satisfies TestDetails;
 }
 
@@ -2264,14 +2497,42 @@ export async function submitTestByToken(input: {
     }
 
     for (const answer of input.answers) {
-      const updateResult = await client.query(
-        "UPDATE test_questions SET student_answer = $1 WHERE id = $2 AND test_id = $3",
-        [answer.answer.trim(), answer.id, test.id],
+      const questionResult = await client.query<{
+        question_type: QuestionType;
+        choice_options: unknown;
+      }>(
+        `
+          SELECT question_type, choice_options
+          FROM test_questions
+          WHERE id = $1 AND test_id = $2
+        `,
+        [answer.id, test.id],
       );
 
-      if (updateResult.rowCount === 0) {
+      const question = questionResult.rows[0];
+      if (!question) {
         throw new Error("נשלחו תשובות לא תקינות עבור מבחן זה.");
       }
+
+      const normalizedAnswer =
+        question.question_type === "multiple_choice"
+          ? (() => {
+              const selectedOptionIds = parseChoiceAnswer(answer.answer);
+              const validOptionIds = new Set(normalizeChoiceOptions(question.choice_options).map((option) => option.id));
+
+              if (selectedOptionIds.some((optionId) => !validOptionIds.has(optionId))) {
+                throw new Error("נשלחו תשובות לא תקינות עבור מבחן זה.");
+              }
+
+              return JSON.stringify(selectedOptionIds);
+            })()
+          : answer.answer.trim();
+
+      await client.query("UPDATE test_questions SET student_answer = $1 WHERE id = $2 AND test_id = $3", [
+        normalizedAnswer,
+        answer.id,
+        test.id,
+      ]);
     }
 
     await client.query(

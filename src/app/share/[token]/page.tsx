@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { startSharedTestAction, submitSharedTestAction } from "@/app/actions";
 import { CountdownTimer } from "@/components/CountdownTimer";
 import { SubmitButton } from "@/components/SubmitButton";
+import { getChoiceOptionLabel } from "@/lib/multiple-choice";
 import { getSharedTestByToken } from "@/lib/repository";
 
 type SharePageProps = {
@@ -100,13 +101,40 @@ export default async function SharePage({ params, searchParams }: SharePageProps
           {test.questions.map((question) => (
             <div className="card" key={question.id}>
               <input type="hidden" name="questionIds" value={question.id} />
+              <input type="hidden" name={`questionType:${question.id}`} value={question.questionType} />
               <strong>{question.isBonus ? "שאלת בונוס" : "שאלה"} {question.orderIndex}</strong>
               {question.isBonus ? <p className="muted">שאלה זו היא שאלת בונוס ממאגר שאלות הבונוס.</p> : null}
               <p style={{ whiteSpace: "pre-wrap" }}>{question.prompt}</p>
-              <label>
-                תשובתך
-                <textarea name={`answer:${question.id}`} defaultValue={question.studentAnswer ?? ""} />
-              </label>
+              {question.questionType === "multiple_choice" ? (
+                <div className="stack">
+                  {question.choiceMode === "multiple" ? (
+                    <p className="muted">שימו לב: בשאלה זו יכולה להיות יותר מתשובה נכונה אחת.</p>
+                  ) : null}
+                  <div className="mcq-options">
+                    {question.choiceOptions.map((option, index) => (
+                      <label className="mcq-option-card mcq-answer-option" key={option.id}>
+                        <div className="mcq-option-label">{getChoiceOptionLabel(index)}</div>
+                        <div className="mcq-answer-option-input">
+                          <input
+                            defaultChecked={question.studentAnswerOptionIds.includes(option.id)}
+                            name={`answer:${question.id}`}
+                            type={question.choiceMode === "multiple" ? "checkbox" : "radio"}
+                            value={option.id}
+                          />
+                        </div>
+                        <div className="mcq-option-text" style={{ whiteSpace: "pre-wrap" }}>
+                          {option.text}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <label>
+                  תשובתך
+                  <textarea name={`answer:${question.id}`} defaultValue={question.studentAnswer ?? ""} />
+                </label>
+              )}
             </div>
           ))}
         </div>

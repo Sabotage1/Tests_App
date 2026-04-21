@@ -3,6 +3,7 @@
 import { type Dispatch, type SetStateAction, useState } from "react";
 
 import { createTestAction } from "@/app/actions";
+import { MultipleChoicePreview } from "@/components/MultipleChoicePreview";
 import { SubmitButton } from "@/components/SubmitButton";
 import { QUESTION_UNIT_LABELS } from "@/lib/constants";
 import type { QuestionUnit } from "@/lib/constants";
@@ -146,6 +147,14 @@ export function TestDraftReview({
               </label>
 
               <p style={{ whiteSpace: "pre-wrap" }}>{currentQuestion.text}</p>
+              {currentQuestion.questionType === "multiple_choice" ? (
+                <MultipleChoicePreview
+                  choiceMode={currentQuestion.choiceMode}
+                  options={currentQuestion.choiceOptions}
+                  showCorrectAnswers
+                  showMultipleHint
+                />
+              ) : null}
 
               <div className="pill-row">
                 {currentQuestion.subjectNames.map((subject) => (

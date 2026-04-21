@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { prepareTestDraftAction } from "@/app/actions";
+import { MultipleChoicePreview } from "@/components/MultipleChoicePreview";
 import { SubmitButton } from "@/components/SubmitButton";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
 import type { Option, QuestionRow, RecipientList } from "@/lib/types";
@@ -403,6 +404,14 @@ export function NewTestForm({
                       </p>
                     </div>
                     <p style={{ whiteSpace: "pre-wrap" }}>{question.text}</p>
+                    {question.questionType === "multiple_choice" ? (
+                      <MultipleChoicePreview
+                        choiceMode={question.choiceMode}
+                        options={question.choiceOptions}
+                        showCorrectAnswers
+                        showMultipleHint
+                      />
+                    ) : null}
                   </div>
                 </label>
               );

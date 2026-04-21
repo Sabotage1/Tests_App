@@ -16,6 +16,16 @@ export type Option = {
   unit?: QuestionUnit;
 };
 
+export type QuestionType = "open" | "multiple_choice";
+
+export type ChoiceMode = "single" | "multiple";
+
+export type ChoiceOption = {
+  id: string;
+  text: string;
+  isCorrect: boolean;
+};
+
 export type RecipientListMember = {
   id: string;
   name: string;
@@ -37,7 +47,9 @@ export type QuestionRow = {
   id: string;
   text: string;
   answer: string;
-  questionType: string;
+  questionType: QuestionType;
+  choiceMode: ChoiceMode | null;
+  choiceOptions: ChoiceOption[];
   isBonusSource: boolean;
   unit: QuestionUnit;
   source: string;
@@ -54,7 +66,9 @@ export type TestBuilderQuestion = {
   id: string;
   text: string;
   answer: string;
-  questionType: string;
+  questionType: QuestionType;
+  choiceMode: ChoiceMode | null;
+  choiceOptions: ChoiceOption[];
   isBonusSource: boolean;
   unit: QuestionUnit;
   source: string;
@@ -91,8 +105,12 @@ export type TestQuestion = {
   orderIndex: number;
   isBonus: boolean;
   prompt: string;
+  questionType: QuestionType;
+  choiceMode: ChoiceMode | null;
+  choiceOptions: ChoiceOption[];
   expectedAnswer: string;
   studentAnswer: string | null;
+  studentAnswerOptionIds: string[];
   score: number | null;
   feedback: string | null;
   subjectNames: string[];

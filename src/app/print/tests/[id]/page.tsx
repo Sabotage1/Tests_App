@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { getAccessibleUnitsForUser, requireUser } from "@/lib/auth";
+import { MultipleChoicePreview } from "@/components/MultipleChoicePreview";
 import { PrintButton } from "@/components/PrintButton";
 import { getTestById } from "@/lib/repository";
 
@@ -54,34 +55,47 @@ export default async function PrintTestPage({ params }: PrintPageProps) {
             <h3>{question.isBonus ? "שאלת בונוס" : "שאלה"} {question.orderIndex}</h3>
             {question.isBonus ? <p>שאלה זו נוספה ממאגר שאלות הבונוס.</p> : null}
             <p style={{ whiteSpace: "pre-wrap" }}>{question.prompt}</p>
+            {question.questionType === "multiple_choice" ? (
+              <MultipleChoicePreview
+                choiceMode={question.choiceMode}
+                options={question.choiceOptions}
+                selectedOptionIds={isGraded ? question.studentAnswerOptionIds : []}
+                showCorrectAnswers={isGraded}
+                showMultipleHint
+              />
+            ) : null}
             {isGraded ? (
               <>
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "#f4f8fc",
-                    border: "1px solid #d6e0ea",
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  <strong>תשובת תלמיד</strong>
-                  <div>{question.studentAnswer || "-"}</div>
-                </div>
-                <div
-                  style={{
-                    marginTop: 12,
-                    padding: 12,
-                    borderRadius: 12,
-                    background: "#e8f8ee",
-                    border: "1px solid #9fd5b1",
-                    whiteSpace: "pre-wrap",
-                  }}
-                >
-                  <strong>תשובה צפויה</strong>
-                  <div>{question.expectedAnswer}</div>
-                </div>
+                {question.questionType === "multiple_choice" ? null : (
+                  <>
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: 12,
+                        borderRadius: 12,
+                        background: "#f4f8fc",
+                        border: "1px solid #d6e0ea",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      <strong>תשובת תלמיד</strong>
+                      <div>{question.studentAnswer || "-"}</div>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: 12,
+                        borderRadius: 12,
+                        background: "#e8f8ee",
+                        border: "1px solid #9fd5b1",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      <strong>תשובה צפויה</strong>
+                      <div>{question.expectedAnswer}</div>
+                    </div>
+                  </>
+                )}
                 <div style={{ marginTop: 12 }}>
                   <strong>ציון לשאלה:</strong> {question.score ?? 0}
                 </div>
@@ -91,8 +105,12 @@ export default async function PrintTestPage({ params }: PrintPageProps) {
               </>
             ) : (
               <>
-                <div style={{ borderBottom: "1px solid #cfd6df", height: 60, marginTop: 12 }} />
-                <div style={{ borderBottom: "1px solid #cfd6df", height: 60, marginTop: 12 }} />
+                {question.questionType === "multiple_choice" ? null : (
+                  <>
+                    <div style={{ borderBottom: "1px solid #cfd6df", height: 60, marginTop: 12 }} />
+                    <div style={{ borderBottom: "1px solid #cfd6df", height: 60, marginTop: 12 }} />
+                  </>
+                )}
               </>
             )}
           </div>

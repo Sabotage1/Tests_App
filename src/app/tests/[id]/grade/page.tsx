@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { gradeTestAction, gradeTestWithAiAction } from "@/app/actions";
 import { getAccessibleUnitsForUser, requireUser } from "@/lib/auth";
 import { AiGradingButton } from "@/components/AiGradingButton";
+import { MultipleChoicePreview } from "@/components/MultipleChoicePreview";
 import { SubmitButton } from "@/components/SubmitButton";
 import { getBonusQuestionPoints, getTestById } from "@/lib/repository";
 
@@ -86,11 +87,30 @@ export default async function GradePage({ params, searchParams }: GradePageProps
               <div className="split grade-split">
                 <div className="question-block grade-panel expected-answer">
                   <strong>תשובה צפויה</strong>
-                  <p style={{ whiteSpace: "pre-wrap" }}>{question.expectedAnswer}</p>
+                  {question.questionType === "multiple_choice" ? (
+                    <MultipleChoicePreview
+                      choiceMode={question.choiceMode}
+                      options={question.choiceOptions}
+                      showCorrectAnswers
+                      showMultipleHint
+                    />
+                  ) : (
+                    <p style={{ whiteSpace: "pre-wrap" }}>{question.expectedAnswer}</p>
+                  )}
                 </div>
                 <div className="question-block grade-panel">
                   <strong>תשובת תלמיד</strong>
-                  <p style={{ whiteSpace: "pre-wrap" }}>{question.studentAnswer || "-"}</p>
+                  {question.questionType === "multiple_choice" ? (
+                    <MultipleChoicePreview
+                      choiceMode={question.choiceMode}
+                      options={question.choiceOptions}
+                      selectedOptionIds={question.studentAnswerOptionIds}
+                      showCorrectAnswers
+                      showMultipleHint
+                    />
+                  ) : (
+                    <p style={{ whiteSpace: "pre-wrap" }}>{question.studentAnswer || "-"}</p>
+                  )}
                 </div>
               </div>
               <div className="split">
