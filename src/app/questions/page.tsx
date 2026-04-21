@@ -128,6 +128,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
           <QuestionEditorForm
             bonusFilter={selectedBonusFilter}
             editingQuestion={editingQuestion}
+            key={editingQuestion?.id ?? `new-question-${selectedUnit}`}
             nextSourceReference={editorSourceReference}
             selectedStageId={selectedStageId}
             selectedSubjectId={selectedSubjectId}

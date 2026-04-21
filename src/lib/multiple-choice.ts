@@ -2,7 +2,8 @@ import { MISSING_ANSWER_TEXT } from "@/lib/constants";
 import type { ChoiceMode, ChoiceOption } from "@/lib/types";
 
 const OPTION_LABELS = ["א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט", "י"] as const;
-const OPTION_PREFIX_PATTERN = /^((?:[א-ת])|\d+)\s*(?:(?:[.)]|[\u05be-])\s*)?(.+)$/u;
+const EXPLICIT_OPTION_PREFIX_PATTERN = /^((?:[א-ת])|\d+)\s*(?:[.)]|[\u05be-])\s*(.+)$/u;
+const PLAIN_HEBREW_MARKER_PATTERN = /^([א-ת])\s+([A-Za-z0-9].+)$/u;
 const INLINE_NUMERIC_OPTION_PATTERN = /^(.+?)\s*\.\s*(\d+)\s+(.+)$/u;
 
 function compactWhitespace(value: string) {
@@ -148,10 +149,17 @@ export function extractLegacyMultipleChoiceParts(rawText: string) {
   let currentOptionIndex = -1;
 
   for (const line of lines) {
-    const optionMatch = line.match(OPTION_PREFIX_PATTERN);
+    const optionMatch = line.match(EXPLICIT_OPTION_PREFIX_PATTERN);
 
     if (optionMatch) {
       optionTexts.push(optionMatch[2].trim());
+      currentOptionIndex = optionTexts.length - 1;
+      continue;
+    }
+
+    const plainMarkerMatch = line.match(PLAIN_HEBREW_MARKER_PATTERN);
+    if (plainMarkerMatch) {
+      optionTexts.push(plainMarkerMatch[2].trim());
       currentOptionIndex = optionTexts.length - 1;
       continue;
     }

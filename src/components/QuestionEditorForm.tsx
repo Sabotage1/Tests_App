@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { saveQuestionAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -51,6 +51,12 @@ export function QuestionEditorForm({
   const [choiceOptions, setChoiceOptions] = useState<ChoiceOption[]>(
     editingQuestion?.choiceOptions.length ? editingQuestion.choiceOptions : createDefaultChoiceOptions(),
   );
+
+  useEffect(() => {
+    setQuestionType(editingQuestion?.questionType ?? "open");
+    setChoiceMode(editingQuestion?.choiceMode ?? "single");
+    setChoiceOptions(editingQuestion?.choiceOptions.length ? editingQuestion.choiceOptions : createDefaultChoiceOptions());
+  }, [editingQuestion]);
 
   function ensureSingleCorrectOption(nextOptions: ChoiceOption[]) {
     const firstCorrectOptionId = nextOptions.find((option) => option.isCorrect)?.id ?? nextOptions[0]?.id ?? "";
@@ -136,7 +142,7 @@ export function QuestionEditorForm({
   }
 
   return (
-    <form action={saveQuestionAction} key={editingQuestion?.id ?? `new-question-${selectedUnit}`}>
+    <form action={saveQuestionAction}>
       <input name="id" type="hidden" defaultValue={editingQuestion?.id} />
       <input name="unitFilter" type="hidden" value={selectedUnit} />
       <input name="bonusFilter" type="hidden" value={bonusFilter} />
