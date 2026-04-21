@@ -9,7 +9,7 @@ import { getBonusQuestionPoints, getTestById } from "@/lib/repository";
 
 type GradePageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ aiSaved?: string; aiError?: string }>;
+  searchParams: Promise<{ aiSaved?: string; aiError?: string; aiGrade?: string }>;
 };
 
 function getSolvedMinutes(startedAt: string | null, submittedAt: string | null) {
@@ -23,6 +23,14 @@ function getSolvedMinutes(startedAt: string | null, submittedAt: string | null) 
   }
 
   return Math.ceil(difference / 60000);
+}
+
+function formatGrade(grade: number | null) {
+  if (grade === null || Number.isNaN(grade)) {
+    return "-";
+  }
+
+  return grade % 1 === 0 ? String(grade) : grade.toFixed(2).replace(/(?:\.0+|(\.\d*?)0+)$/, "$1");
 }
 
 export default async function GradePage({ params, searchParams }: GradePageProps) {
@@ -43,6 +51,7 @@ export default async function GradePage({ params, searchParams }: GradePageProps
   const scoredQuestionCount = regularQuestionCount > 0 ? regularQuestionCount : test.questions.length;
   const maxPerRegularQuestion = scoredQuestionCount > 0 ? Number((100 / scoredQuestionCount).toFixed(2)) : 0;
   const bonusQuestionCount = test.questions.filter((question) => question.isBonus).length;
+  const aiGrade = query.aiGrade ? Number(query.aiGrade) : null;
 
   return (
     <div className="stack">
@@ -71,7 +80,10 @@ export default async function GradePage({ params, searchParams }: GradePageProps
         </form>
       </div>
       {query.aiSaved ? (
-        <div className="alert">תוצאות הבדיקה האוטומטית נשמרו במבחן. ניתן לעבור ולתקן ידנית לפני שמירה נוספת.</div>
+        <div className="alert">
+          תוצאות הבדיקה האוטומטית נטענו. ציון סופי מחושב כרגע: {formatGrade(aiGrade)}. ניתן לעבור ולתקן ידנית לפני
+          שמירה נוספת.
+        </div>
       ) : null}
       {query.aiError ? <div className="alert">{query.aiError}</div> : null}
 
@@ -105,7 +117,6 @@ export default async function GradePage({ params, searchParams }: GradePageProps
                       choiceMode={question.choiceMode}
                       options={question.choiceOptions}
                       selectedOptionIds={question.studentAnswerOptionIds}
-                      showCorrectAnswers
                       showMultipleHint
                     />
                   ) : (

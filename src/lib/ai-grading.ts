@@ -177,7 +177,7 @@ export async function gradeTestWithAi(testId: string, gradedByName: string) {
     throw new Error("Gemini החזיר תשובות חלקיות ולא ניתן לשמור את הבדיקה.");
   }
 
-  await gradeTest({
+  return gradeTest({
     testId,
     gradedByName,
     gradingNotes: parsed.gradingNotes,

@@ -1522,12 +1522,12 @@ export async function gradeTestAction(formData: FormData) {
 export async function gradeTestWithAiAction(formData: FormData) {
   const user = await requireEditor();
   const testId = formData.get("testId")?.toString() ?? "";
-  const accessibleUnits = getAccessibleUnitsForUser(user);
   await getAccessibleTestOrThrow(user, testId);
+  let aiGrade: number | null = null;
 
   try {
-    await gradeTestWithAi(testId, user.displayName);
-    const gradedTest = await getTestById(testId, accessibleUnits);
+    const gradedTest = await gradeTestWithAi(testId, user.displayName);
+    aiGrade = gradedTest.grade;
     await logUserAudit(user, {
       action: "test.graded_with_ai",
       entityType: "test",
@@ -1544,7 +1544,7 @@ export async function gradeTestWithAiAction(formData: FormData) {
 
   revalidatePath(`/tests/${testId}`);
   revalidatePath(`/tests/${testId}/grade`);
-  redirect(`/tests/${testId}/grade?aiSaved=1`);
+  redirect(`/tests/${testId}/grade?aiSaved=1&aiGrade=${encodeURIComponent(String(aiGrade ?? ""))}`);
 }
 
 export async function sendGradeEmailAction(formData: FormData) {

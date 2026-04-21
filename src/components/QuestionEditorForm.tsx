@@ -227,10 +227,11 @@ export function QuestionEditorForm({
                   />
                   <span>{getChoiceOptionLabel(index)}</span>
                 </label>
-                <input
+                <textarea
+                  className="mcq-editor-textarea"
                   onChange={(event) => updateChoiceOption(option.id, { text: event.target.value })}
                   placeholder={`אפשרות ${getChoiceOptionLabel(index)}`}
-                  type="text"
+                  rows={3}
                   value={option.text}
                 />
                 <button
