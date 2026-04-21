@@ -217,6 +217,10 @@ async function createSchema(client: PoolClient) {
 
     CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs (created_at DESC);
     CREATE INDEX IF NOT EXISTS audit_logs_entity_type_idx ON audit_logs (entity_type, created_at DESC);
+    CREATE INDEX IF NOT EXISTS questions_unit_bonus_created_idx ON questions (unit, is_bonus_source, created_at DESC);
+    CREATE INDEX IF NOT EXISTS questions_unit_source_reference_idx ON questions (unit, source, source_reference);
+    CREATE INDEX IF NOT EXISTS question_subjects_subject_question_idx ON question_subjects (subject_id, question_id);
+    CREATE INDEX IF NOT EXISTS question_stages_stage_question_idx ON question_stages (stage_id, question_id);
     CREATE INDEX IF NOT EXISTS recipient_lists_unit_name_idx ON recipient_lists (unit, name);
     CREATE INDEX IF NOT EXISTS recipient_list_members_list_order_idx ON recipient_list_members (recipient_list_id, order_index);
     CREATE INDEX IF NOT EXISTS login_attempts_username_created_at_idx ON login_attempts (username, created_at DESC);

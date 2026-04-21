@@ -8,23 +8,13 @@ import { QuestionUnitSwitcher } from "@/components/QuestionUnitSwitcher";
 import { SubmitButton } from "@/components/SubmitButton";
 import { getAccessibleUnitsForUser, getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
-import { getQuestionById, getQuestionSummaries, getStages, getSubjects } from "@/lib/repository";
+import { getNextQuestionReferenceForUnit, getQuestionBankSummaries, getQuestionById, getStages, getSubjects } from "@/lib/repository";
 
 type QuestionsPageProps = {
   searchParams: Promise<{ edit?: string; unit?: string; error?: string; bonus?: string; subject?: string; stage?: string }>;
 };
 
 type BonusFilter = "all" | "bonus" | "regular";
-
-function getQuestionNumber(sourceReference: string | null) {
-  const digits = sourceReference?.match(/\d+/g)?.join("") ?? "";
-  if (!digits) {
-    return null;
-  }
-
-  const parsed = Number(digits);
-  return Number.isNaN(parsed) ? null : parsed;
-}
 
 function getSingleValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
@@ -65,31 +55,24 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
   const selectedUnit: QuestionUnit = getSelectedUnitForUser(user, params.unit);
   const accessibleUnits = getAccessibleUnitsForUser(user);
   const unitOrder = getUnitOrderForUser(user);
-  const [questions, subjects, stages, editingQuestion] = await Promise.all([
-    getQuestionSummaries(selectedUnit),
-    getSubjects(selectedUnit),
-    getStages(selectedUnit),
-    params.edit ? getQuestionById(params.edit, accessibleUnits) : Promise.resolve(null),
-  ]);
-  const unitQuestions = questions.filter((question) => question.unit === selectedUnit);
+  const [subjects, stages] = await Promise.all([getSubjects(selectedUnit), getStages(selectedUnit)]);
   const selectedBonusFilter: BonusFilter =
     getSingleValue(params.bonus) === "bonus" ? "bonus" : getSingleValue(params.bonus) === "regular" ? "regular" : "all";
   const requestedSubjectId = getSingleValue(params.subject);
   const requestedStageId = getSingleValue(params.stage);
   const selectedSubjectId = subjects.some((subject) => subject.value === requestedSubjectId) ? requestedSubjectId : "";
   const selectedStageId = stages.some((stage) => stage.value === requestedStageId) ? requestedStageId : "";
-  const displayedQuestions = unitQuestions.filter((question) => {
-    const matchesBonus =
-      selectedBonusFilter === "all" ||
-      (selectedBonusFilter === "bonus" ? question.isBonusSource : !question.isBonusSource);
-    const matchesSubject = !selectedSubjectId || question.subjectIds.includes(selectedSubjectId);
-    const matchesStage = !selectedStageId || question.stageIds.includes(selectedStageId);
-
-    return matchesBonus && matchesSubject && matchesStage;
-  });
-  const nextQuestionReference = `שאלה ${
-    unitQuestions.reduce((maxNumber, question) => Math.max(maxNumber, getQuestionNumber(question.sourceReference) ?? 0), 0) + 1
-  }`;
+  const [displayedQuestions, editingQuestion, nextQuestionReference] = await Promise.all([
+    getQuestionBankSummaries({
+      unit: selectedUnit,
+      bonusFilter: selectedBonusFilter,
+      subjectId: selectedSubjectId || undefined,
+      stageId: selectedStageId || undefined,
+    }),
+    params.edit ? getQuestionById(params.edit, accessibleUnits) : Promise.resolve(null),
+    getNextQuestionReferenceForUnit(selectedUnit),
+  ]);
+  const unitQuestions = displayedQuestions;
   const displayedQuestionLabels = new Map(
     unitQuestions.map((question, index) => [question.id, question.sourceReference || `שאלה ${index + 1}`]),
   );
@@ -181,7 +164,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                 ניקוי סינון
               </Link>
             </div>
-            <p className="muted">מוצגות {displayedQuestions.length} מתוך {unitQuestions.length} שאלות ביחידה.</p>
+            <p className="muted">מוצגות {displayedQuestions.length} שאלות ביחידה.</p>
           </form>
           <div className="stack question-list-scroll">
             {displayedQuestions.map((question) => (

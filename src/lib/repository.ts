@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
+import { unstable_cache } from "next/cache";
 import type { PoolClient, QueryResultRow } from "pg";
 
 import {
@@ -825,16 +826,24 @@ export async function authenticateUser(username: string, password: string) {
 }
 
 export async function getSubjects(unit?: QuestionUnit) {
-  const result = await query<Option>(
-    `
-      SELECT id AS value, name AS label, unit
-      FROM subjects
-      ${unit ? "WHERE unit = $1" : ""}
-      ORDER BY unit, name
-    `,
-    unit ? [unit] : [],
+  const loadSubjects = unstable_cache(
+    async (selectedUnit?: QuestionUnit) => {
+      const result = await query<Option>(
+        `
+          SELECT id AS value, name AS label, unit
+          FROM subjects
+          ${selectedUnit ? "WHERE unit = $1" : ""}
+          ORDER BY unit, name
+        `,
+        selectedUnit ? [selectedUnit] : [],
+      );
+      return result.rows;
+    },
+    ["lookup-subjects"],
+    { tags: ["lookup-options"] },
   );
-  return result.rows;
+
+  return loadSubjects(unit);
 }
 
 export async function getDefaultTestDurationMinutes() {
@@ -900,16 +909,24 @@ export async function getPendingReviewCount(units?: QuestionUnit | QuestionUnit[
 }
 
 export async function getStages(unit?: QuestionUnit) {
-  const result = await query<Option>(
-    `
-      SELECT id AS value, name AS label, unit
-      FROM stages
-      ${unit ? "WHERE unit = $1" : ""}
-      ORDER BY unit, name
-    `,
-    unit ? [unit] : [],
+  const loadStages = unstable_cache(
+    async (selectedUnit?: QuestionUnit) => {
+      const result = await query<Option>(
+        `
+          SELECT id AS value, name AS label, unit
+          FROM stages
+          ${selectedUnit ? "WHERE unit = $1" : ""}
+          ORDER BY unit, name
+        `,
+        selectedUnit ? [selectedUnit] : [],
+      );
+      return result.rows;
+    },
+    ["lookup-stages"],
+    { tags: ["lookup-options"] },
   );
-  return result.rows;
+
+  return loadStages(unit);
 }
 
 export async function getRecipientLists(unit?: QuestionUnit | QuestionUnit[]) {
@@ -1827,6 +1844,124 @@ export async function getQuestionSummaries(units?: QuestionUnit | QuestionUnit[]
   `, values);
 
   return result.rows.map(mapQuestionSummaryRecord);
+}
+
+export async function getQuestionBankSummaries(input: {
+  unit: QuestionUnit;
+  bonusFilter?: "all" | "bonus" | "regular";
+  subjectId?: string;
+  stageId?: string;
+}) {
+  const loadQuestionBankSummaries = unstable_cache(
+    async (
+      unit: QuestionUnit,
+      bonusFilter: "all" | "bonus" | "regular",
+      subjectId?: string,
+      stageId?: string,
+    ) => {
+      const values: unknown[] = [unit];
+      const conditions = ["q.unit = $1"];
+
+      if (bonusFilter === "bonus") {
+        conditions.push("q.is_bonus_source = TRUE");
+      } else if (bonusFilter === "regular") {
+        conditions.push("q.is_bonus_source = FALSE");
+      }
+
+      if (subjectId) {
+        conditions.push(
+          `EXISTS (
+            SELECT 1
+            FROM question_subjects qs_filter
+            WHERE qs_filter.question_id = q.id
+              AND qs_filter.subject_id = $${values.push(subjectId)}
+          )`,
+        );
+      }
+
+      if (stageId) {
+        conditions.push(
+          `EXISTS (
+            SELECT 1
+            FROM question_stages qst_filter
+            WHERE qst_filter.question_id = q.id
+              AND qst_filter.stage_id = $${values.push(stageId)}
+          )`,
+        );
+      }
+
+      const result = await query<{
+        id: string;
+        text: string;
+        answer: string;
+        questionType: QuestionType;
+        isBonusSource: boolean;
+        unit: QuestionUnit;
+        source: string;
+        sourceReference: string | null;
+        isActive: number;
+        updatedAt: string;
+        subjectIds: string[] | null;
+        stageIds: string[] | null;
+        subjectNames: string[] | null;
+        stageNames: string[] | null;
+      }>(
+        `
+          SELECT
+            q.id,
+            q.text,
+            q.answer,
+            q.question_type AS "questionType",
+            q.is_bonus_source AS "isBonusSource",
+            q.unit,
+            q.source,
+            q.source_reference AS "sourceReference",
+            q.is_active::int AS "isActive",
+            q.updated_at::text AS "updatedAt",
+            COALESCE(array_remove(array_agg(DISTINCT s.id), NULL), ARRAY[]::TEXT[]) AS "subjectIds",
+            COALESCE(array_remove(array_agg(DISTINCT st.id), NULL), ARRAY[]::TEXT[]) AS "stageIds",
+            COALESCE(array_remove(array_agg(DISTINCT s.name), NULL), ARRAY[]::TEXT[]) AS "subjectNames",
+            COALESCE(array_remove(array_agg(DISTINCT st.name), NULL), ARRAY[]::TEXT[]) AS "stageNames"
+          FROM questions q
+          LEFT JOIN question_subjects qs ON qs.question_id = q.id
+          LEFT JOIN subjects s ON s.id = qs.subject_id
+          LEFT JOIN question_stages qst ON qst.question_id = q.id
+          LEFT JOIN stages st ON st.id = qst.stage_id
+          WHERE ${conditions.join(" AND ")}
+          GROUP BY q.id
+          ORDER BY
+            q.source ASC,
+            NULLIF(regexp_replace(COALESCE(q.source_reference, ''), '\\D', '', 'g'), '')::INTEGER NULLS LAST,
+            q.source_reference ASC NULLS LAST,
+            q.created_at ASC
+        `,
+        values,
+      );
+
+      return result.rows.map(mapQuestionSummaryRecord);
+    },
+    ["question-bank-summaries"],
+    { tags: ["question-bank"] },
+  );
+
+  return loadQuestionBankSummaries(input.unit, input.bonusFilter ?? "all", input.subjectId, input.stageId);
+}
+
+export async function getNextQuestionReferenceForUnit(unit: QuestionUnit) {
+  const result = await query<{ max_number: string | null }>(
+    `
+      SELECT COALESCE(MAX(number_value), 0)::text AS max_number
+      FROM (
+        SELECT NULLIF(regexp_replace(COALESCE(source_reference, ''), '\\D', '', 'g'), '')::INTEGER AS number_value
+        FROM questions
+        WHERE unit = $1
+      ) numbered
+    `,
+    [unit],
+  );
+
+  const nextNumber = Number(result.rows[0]?.max_number ?? 0) + 1;
+  return `שאלה ${nextNumber}`;
 }
 
 export async function upsertQuestion(input: {

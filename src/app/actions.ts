@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -442,6 +442,7 @@ export async function saveQuestionAction(formData: FormData) {
   }
 
   revalidatePath("/questions");
+  revalidateTag("question-bank", "max");
   redirect(`/questions${redirectSuffix}` as RedirectPath);
 }
 
@@ -469,6 +470,7 @@ export async function archiveQuestionAction(formData: FormData) {
       : null,
   });
   revalidatePath("/questions");
+  revalidateTag("question-bank", "max");
   redirect(`/questions${redirectSuffix}` as RedirectPath);
 }
 
@@ -496,6 +498,7 @@ export async function deleteQuestionAction(formData: FormData) {
       : null,
   });
   revalidatePath("/questions");
+  revalidateTag("question-bank", "max");
   redirect(`/questions${redirectSuffix}` as RedirectPath);
 }
 
@@ -530,6 +533,8 @@ export async function saveLookupAction(formData: FormData) {
   revalidatePath("/settings");
   revalidatePath("/questions");
   revalidatePath("/tests/new");
+  revalidateTag("lookup-options", "max");
+  revalidateTag("question-bank", "max");
   redirect(getLookupSettingsRedirect(formData));
 }
 
@@ -559,6 +564,8 @@ export async function deleteLookupAction(formData: FormData) {
   revalidatePath("/settings");
   revalidatePath("/questions");
   revalidatePath("/tests/new");
+  revalidateTag("lookup-options", "max");
+  revalidateTag("question-bank", "max");
   redirect(getLookupSettingsRedirect(formData));
 }
 
