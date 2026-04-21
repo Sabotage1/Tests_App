@@ -484,6 +484,42 @@ function mapQuestionRecord(row: {
   };
 }
 
+function mapQuestionSummaryRecord(row: {
+  id: string;
+  text: string;
+  answer: string;
+  questionType: QuestionType;
+  isBonusSource: boolean;
+  unit: QuestionUnit;
+  source: string;
+  sourceReference: string | null;
+  isActive: number | boolean;
+  updatedAt: string;
+  subjectIds: string[] | null;
+  stageIds: string[] | null;
+  subjectNames: string[] | null;
+  stageNames: string[] | null;
+}): QuestionRow {
+  return {
+    id: row.id,
+    text: row.text,
+    answer: row.answer,
+    questionType: row.questionType,
+    choiceMode: null,
+    choiceOptions: [],
+    isBonusSource: row.isBonusSource,
+    unit: row.unit,
+    source: row.source,
+    sourceReference: row.sourceReference,
+    subjectIds: formatArray(row.subjectIds),
+    stageIds: formatArray(row.stageIds),
+    subjectNames: formatArray(row.subjectNames),
+    stageNames: formatArray(row.stageNames),
+    updatedAt: row.updatedAt,
+    isActive: Number(row.isActive),
+  };
+}
+
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -1738,6 +1774,59 @@ export async function getQuestions(units?: QuestionUnit | QuestionUnit[]) {
   `, values);
 
   return result.rows.map(mapQuestionRecord);
+}
+
+export async function getQuestionSummaries(units?: QuestionUnit | QuestionUnit[]) {
+  const allowedUnits = normalizeUnitFilter(units);
+  const values: unknown[] = [];
+  const whereClause =
+    allowedUnits.length > 0 ? `WHERE q.unit = ANY($${values.push(allowedUnits)}::text[])` : "";
+  const result = await query<{
+    id: string;
+    text: string;
+    answer: string;
+    questionType: QuestionType;
+    isBonusSource: boolean;
+    unit: QuestionUnit;
+    source: string;
+    sourceReference: string | null;
+    isActive: number;
+    updatedAt: string;
+    subjectIds: string[] | null;
+    stageIds: string[] | null;
+    subjectNames: string[] | null;
+    stageNames: string[] | null;
+  }>(`
+    SELECT
+      q.id,
+      q.text,
+      q.answer,
+      q.question_type AS "questionType",
+      q.is_bonus_source AS "isBonusSource",
+      q.unit,
+      q.source,
+      q.source_reference AS "sourceReference",
+      q.is_active::int AS "isActive",
+      q.updated_at::text AS "updatedAt",
+      COALESCE(array_remove(array_agg(DISTINCT s.id), NULL), ARRAY[]::TEXT[]) AS "subjectIds",
+      COALESCE(array_remove(array_agg(DISTINCT st.id), NULL), ARRAY[]::TEXT[]) AS "stageIds",
+      COALESCE(array_remove(array_agg(DISTINCT s.name), NULL), ARRAY[]::TEXT[]) AS "subjectNames",
+      COALESCE(array_remove(array_agg(DISTINCT st.name), NULL), ARRAY[]::TEXT[]) AS "stageNames"
+    FROM questions q
+    LEFT JOIN question_subjects qs ON qs.question_id = q.id
+    LEFT JOIN subjects s ON s.id = qs.subject_id
+    LEFT JOIN question_stages qst ON qst.question_id = q.id
+    LEFT JOIN stages st ON st.id = qst.stage_id
+    ${whereClause}
+    GROUP BY q.id
+    ORDER BY
+      q.source ASC,
+      NULLIF(regexp_replace(COALESCE(q.source_reference, ''), '\\D', '', 'g'), '')::INTEGER NULLS LAST,
+      q.source_reference ASC NULLS LAST,
+      q.created_at ASC
+  `, values);
+
+  return result.rows.map(mapQuestionSummaryRecord);
 }
 
 export async function upsertQuestion(input: {

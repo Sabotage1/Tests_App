@@ -2,14 +2,13 @@ import Link from "next/link";
 import type { Route } from "next";
 
 import { archiveQuestionAction, deleteQuestionAction } from "@/app/actions";
-import { MultipleChoicePreview } from "@/components/MultipleChoicePreview";
 import { QuestionEditorForm } from "@/components/QuestionEditorForm";
 import { QuestionListHeightSync } from "@/components/QuestionListHeightSync";
 import { QuestionUnitSwitcher } from "@/components/QuestionUnitSwitcher";
 import { SubmitButton } from "@/components/SubmitButton";
 import { getAccessibleUnitsForUser, getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
-import { getQuestionById, getQuestions, getStages, getSubjects } from "@/lib/repository";
+import { getQuestionById, getQuestionSummaries, getStages, getSubjects } from "@/lib/repository";
 
 type QuestionsPageProps = {
   searchParams: Promise<{ edit?: string; unit?: string; error?: string; bonus?: string; subject?: string; stage?: string }>;
@@ -67,7 +66,7 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
   const accessibleUnits = getAccessibleUnitsForUser(user);
   const unitOrder = getUnitOrderForUser(user);
   const [questions, subjects, stages, editingQuestion] = await Promise.all([
-    getQuestions(selectedUnit),
+    getQuestionSummaries(selectedUnit),
     getSubjects(selectedUnit),
     getStages(selectedUnit),
     params.edit ? getQuestionById(params.edit, accessibleUnits) : Promise.resolve(null),
@@ -238,16 +237,9 @@ export default async function QuestionsPage({ searchParams }: QuestionsPageProps
                   </div>
                 </div>
                 <p style={{ whiteSpace: "pre-wrap" }}>{question.text}</p>
-                {question.questionType === "multiple_choice" ? (
-                  <MultipleChoicePreview
-                    choiceMode={question.choiceMode}
-                    options={question.choiceOptions}
-                    showCorrectAnswers
-                    showMultipleHint
-                  />
-                ) : null}
                 <div className="pill-row">
                   {question.isBonusSource ? <span className="pill pill-bonus">שאלת בונוס</span> : null}
+                  <span className="pill">{question.questionType === "multiple_choice" ? "רב ברירה" : "פתוחה"}</span>
                   {question.subjectNames.map((subject) => (
                     <span className="pill" key={subject}>
                       {subject}
