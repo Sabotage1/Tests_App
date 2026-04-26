@@ -2,8 +2,14 @@ import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 
-import { DEFAULT_BONUS_QUESTION_POINTS, DEFAULT_DURATION_MINUTES } from "@/lib/constants";
-import { buildChoiceAnswerText, buildLegacyMultipleChoicePayload, normalizeChoiceOptions } from "@/lib/multiple-choice";
+import { DEFAULT_BONUS_QUESTION_POINTS, DEFAULT_DURATION_MINUTES, MISSING_ANSWER_TEXT } from "@/lib/constants";
+import {
+  buildChoiceAnswerText,
+  buildOpenQuestionTextFromChoiceOptions,
+  buildLegacyMultipleChoicePayload,
+  choiceOptionsLookLikeOpenSections,
+  normalizeChoiceOptions,
+} from "@/lib/multiple-choice";
 import { getSeedQuestions, getSeedStages, getSeedSubjects } from "@/lib/seed";
 
 declare global {
@@ -473,6 +479,27 @@ async function migrateStructuredQuestionChoices(client: PoolClient) {
   for (const row of result.rows) {
     const existingOptions = normalizeChoiceOptions(row.choice_options);
     if (existingOptions.length >= 2) {
+      if (choiceOptionsLookLikeOpenSections(existingOptions)) {
+        const generatedAnswer = buildChoiceAnswerText(existingOptions);
+        const answer =
+          row.answer.trim() && row.answer.trim() !== generatedAnswer.trim() ? row.answer : MISSING_ANSWER_TEXT;
+
+        await client.query(
+          `
+            UPDATE questions
+            SET text = $1,
+                answer = $2,
+                question_type = 'open',
+                choice_mode = NULL,
+                choice_options = NULL,
+                updated_at = NOW()
+            WHERE id = $3
+          `,
+          [buildOpenQuestionTextFromChoiceOptions(row.text, existingOptions), answer, row.id],
+        );
+        continue;
+      }
+
       const correctCount = existingOptions.filter((option) => option.isCorrect).length;
       const choiceMode = row.choice_mode === "multiple" || correctCount > 1 ? "multiple" : "single";
       const answer = buildChoiceAnswerText(existingOptions);
@@ -529,6 +556,28 @@ async function migrateStructuredTestQuestionChoices(client: PoolClient) {
   for (const row of result.rows) {
     const existingOptions = normalizeChoiceOptions(row.choice_options);
     if (existingOptions.length >= 2) {
+      if (choiceOptionsLookLikeOpenSections(existingOptions)) {
+        const generatedAnswer = buildChoiceAnswerText(existingOptions);
+        const expectedAnswer =
+          row.expected_answer.trim() && row.expected_answer.trim() !== generatedAnswer.trim()
+            ? row.expected_answer
+            : MISSING_ANSWER_TEXT;
+
+        await client.query(
+          `
+            UPDATE test_questions
+            SET prompt = $1,
+                question_type = 'open',
+                choice_mode = NULL,
+                choice_options = NULL,
+                expected_answer = $2
+            WHERE id = $3
+          `,
+          [buildOpenQuestionTextFromChoiceOptions(row.prompt, existingOptions), expectedAnswer, row.id],
+        );
+        continue;
+      }
+
       const correctCount = existingOptions.filter((option) => option.isCorrect).length;
       const choiceMode = row.choice_mode === "multiple" || correctCount > 1 ? "multiple" : "single";
       const expectedAnswer = buildChoiceAnswerText(existingOptions);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { prepareTestDraftAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
@@ -72,6 +72,14 @@ function resizeRecipients(currentRecipients: RecipientDraft[], nextCount: number
   return currentRecipients.slice(0, safeCount);
 }
 
+function toggleSelectedValue(values: string[], value: string, checked: boolean) {
+  if (checked) {
+    return values.includes(value) ? values : [...values, value];
+  }
+
+  return values.filter((currentValue) => currentValue !== value);
+}
+
 export function NewTestForm({
   activeQuestions,
   bonusQuestionPoints,
@@ -84,6 +92,8 @@ export function NewTestForm({
 }: NewTestFormProps) {
   const [selectionMode, setSelectionMode] = useState<SelectionMode>(initialValues.selectionMode);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>(initialValues.questionIds);
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>(initialValues.subjectIds);
+  const [selectedStageIds, setSelectedStageIds] = useState<string[]>(initialValues.stageIds);
   const [recipientMode, setRecipientMode] = useState<RecipientMode>(initialValues.recipientMode);
   const [recipientListId, setRecipientListId] = useState(initialValues.recipientListId || recipientLists[0]?.id || "");
   const [recipients, setRecipients] = useState<RecipientDraft[]>(
@@ -97,6 +107,23 @@ export function NewTestForm({
   const selectedRecipientList = recipientLists.find((recipientList) => recipientList.id === recipientListId) ?? null;
   const filledRecipientCount = recipients.filter((recipient) => recipient.name.trim() || recipient.email.trim()).length;
   const bulkRecipientCount = isSavedListMode ? selectedRecipientList?.recipients.length ?? 0 : filledRecipientCount;
+  const manualPickerQuestions = useMemo(
+    () =>
+      activeQuestions.filter((question) => {
+        const subjectMatch =
+          selectedSubjectIds.length === 0 ||
+          selectedSubjectIds.some((subjectId) => question.subjectIds.includes(subjectId));
+        const stageMatch =
+          selectedStageIds.length === 0 || selectedStageIds.some((stageId) => question.stageIds.includes(stageId));
+
+        return subjectMatch && stageMatch;
+      }),
+    [activeQuestions, selectedStageIds, selectedSubjectIds],
+  );
+  const manualPickerQuestionIds = useMemo(
+    () => new Set(manualPickerQuestions.map((question) => question.id)),
+    [manualPickerQuestions],
+  );
 
   function updateRecipient(index: number, key: keyof RecipientDraft, value: string) {
     setRecipients((current) =>
@@ -136,6 +163,10 @@ export function NewTestForm({
       setRecipientListId(recipientLists[0]?.id || "");
     }
   }, [recipientListId, recipientLists, recipientMode]);
+
+  useEffect(() => {
+    setSelectedQuestionIds((current) => current.filter((questionId) => manualPickerQuestionIds.has(questionId)));
+  }, [manualPickerQuestionIds]);
 
   return (
     <form action={prepareTestDraftAction}>
@@ -346,7 +377,10 @@ export function NewTestForm({
                 type="checkbox"
                 name="subjectIds"
                 value={subject.value}
-                defaultChecked={initialValues.subjectIds.includes(subject.value)}
+                checked={selectedSubjectIds.includes(subject.value)}
+                onChange={(event) =>
+                  setSelectedSubjectIds((current) => toggleSelectedValue(current, subject.value, event.target.checked))
+                }
               />
               {subject.label}
             </label>
@@ -363,7 +397,10 @@ export function NewTestForm({
                 type="checkbox"
                 name="stageIds"
                 value={stage.value}
-                defaultChecked={initialValues.stageIds.includes(stage.value)}
+                checked={selectedStageIds.includes(stage.value)}
+                onChange={(event) =>
+                  setSelectedStageIds((current) => toggleSelectedValue(current, stage.value, event.target.checked))
+                }
               />
               {stage.label}
             </label>
@@ -373,9 +410,19 @@ export function NewTestForm({
 
       {isManualSelection ? (
         <div className="stack">
-          <strong>בחירה ידנית של שאלות מהמאגָר עבור {QUESTION_UNIT_LABELS[selectedUnit]}</strong>
+          <div className="question-picker-header">
+            <div>
+              <strong>בחירה ידנית של שאלות מהמאגָר עבור {QUESTION_UNIT_LABELS[selectedUnit]}</strong>
+              <p className="muted">
+                מוצגות {manualPickerQuestions.length} שאלות לפי הנושאים והשלבים שנבחרו.
+              </p>
+            </div>
+            <div className="question-picker-counter" aria-live="polite">
+              נבחרו {selectedQuestionIds.length} שאלות
+            </div>
+          </div>
           <div className="question-picker-list">
-            {activeQuestions.map((question) => {
+            {manualPickerQuestions.map((question) => {
               const isChecked = selectedQuestionIds.includes(question.id);
 
               return (
@@ -409,6 +456,9 @@ export function NewTestForm({
             })}
           </div>
           {activeQuestions.length === 0 ? <div className="muted">עדיין אין שאלות פעילות משויכות ליחידה הזאת.</div> : null}
+          {activeQuestions.length > 0 && manualPickerQuestions.length === 0 ? (
+            <div className="muted">אין שאלות פעילות שתואמות את הסינון הנוכחי.</div>
+          ) : null}
         </div>
       ) : null}
 

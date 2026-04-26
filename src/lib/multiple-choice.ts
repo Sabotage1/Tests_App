@@ -5,6 +5,8 @@ const OPTION_LABELS = ["א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט", "י
 const EXPLICIT_OPTION_PREFIX_PATTERN = /^((?:[א-ת])|\d+)\s*(?:[.)]|[\u05be-])\s*(.+)$/u;
 const PLAIN_HEBREW_MARKER_PATTERN = /^([א-ת])\s+([A-Za-z0-9].+)$/u;
 const INLINE_NUMERIC_OPTION_PATTERN = /^(.+?)\s*\.\s*(\d+)\s+(.+)$/u;
+const OPEN_SECTION_START_PATTERN =
+  /^(?:מה|מי|מתי|היכן|איפה|כיצד|מדוע|למה|האם|איזה|איזו|אילו|באילו|כמה|פרט|פרטי|פרטו|ציין|ציינו|מנה|מנו|תאר|תארו|הסבר|הסבירו|הגדר|הגדירו|כתוב|כתבו|רשום|רשמו|חשב|חשבו|השווה)\b/u;
 
 function compactWhitespace(value: string) {
   return value
@@ -100,6 +102,30 @@ export function buildChoiceAnswerText(options: ChoiceOption[]) {
   return answerText || MISSING_ANSWER_TEXT;
 }
 
+function looksLikeOpenQuestionSection(text: string) {
+  const normalized = compactWhitespace(text);
+
+  return /[?؟]$/.test(normalized) || OPEN_SECTION_START_PATTERN.test(normalized);
+}
+
+function optionTextsLookLikeOpenSections(optionTexts: string[]) {
+  if (optionTexts.length < 2) {
+    return false;
+  }
+
+  const questionLikeCount = optionTexts.filter(looksLikeOpenQuestionSection).length;
+  return questionLikeCount >= Math.max(2, Math.ceil(optionTexts.length / 2));
+}
+
+export function choiceOptionsLookLikeOpenSections(options: ChoiceOption[]) {
+  return optionTextsLookLikeOpenSections(options.map((option) => option.text));
+}
+
+export function buildOpenQuestionTextFromChoiceOptions(text: string, options: ChoiceOption[]) {
+  const sectionLines = options.map((option, index) => `${getChoiceOptionLabel(index)}. ${option.text.trim()}`);
+  return [text.trim(), ...sectionLines].filter(Boolean).join("\n");
+}
+
 function inferCorrectOptionIndex(optionTexts: string[], answer: string) {
   const trimmedAnswer = answer.trim();
   if (!trimmedAnswer || trimmedAnswer === MISSING_ANSWER_TEXT) {
@@ -183,6 +209,10 @@ export function extractLegacyMultipleChoiceParts(rawText: string) {
     return null;
   }
 
+  if (optionTextsLookLikeOpenSections(optionTexts)) {
+    return null;
+  }
+
   return {
     text: questionLines.join("\n").trim(),
     optionTexts,
@@ -208,4 +238,8 @@ export function buildLegacyMultipleChoicePayload(rawText: string, answer: string
     choiceOptions,
     answer: buildChoiceAnswerText(choiceOptions),
   };
+}
+
+export function looksLikeLegacyMultipleChoiceText(rawText: string) {
+  return Boolean(extractLegacyMultipleChoiceParts(rawText));
 }

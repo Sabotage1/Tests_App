@@ -16,7 +16,9 @@ import {
 import { query, withTransaction } from "@/lib/db";
 import {
   buildChoiceAnswerText,
+  buildOpenQuestionTextFromChoiceOptions,
   buildLegacyMultipleChoicePayload,
+  choiceOptionsLookLikeOpenSections,
   describeChoiceSelection,
   getChoiceMode,
   normalizeChoiceOptions,
@@ -116,6 +118,23 @@ function getQuestionChoices(input: {
 
   const normalizedOptions = normalizeChoiceOptions(input.choiceOptions);
   if (normalizedOptions.length >= 2) {
+    if (choiceOptionsLookLikeOpenSections(normalizedOptions)) {
+      const generatedChoiceAnswer = buildChoiceAnswerText(normalizedOptions);
+      const answer =
+        input.answer.trim() && input.answer.trim() !== generatedChoiceAnswer.trim()
+          ? input.answer
+          : MISSING_ANSWER_TEXT;
+
+      return {
+        questionType: "open" as const,
+        text: buildOpenQuestionTextFromChoiceOptions(input.text, normalizedOptions),
+        answer,
+        choiceMode: null,
+        choiceOptions: [] as ChoiceOption[],
+        studentAnswerOptionIds: [] as string[],
+      };
+    }
+
     const normalizedChoiceMode = getChoiceMode(input.choiceMode) ?? (normalizedOptions.filter((option) => option.isCorrect).length > 1 ? "multiple" : "single");
     return {
       questionType,
@@ -362,6 +381,113 @@ function mapTestBuilderQuestion(row: QuestionSelectionRow): TestBuilderQuestion 
     subjectNames: formatArray(row.subject_names),
     stageNames: formatArray(row.stage_names),
   };
+}
+
+function orderQuestionSelectionRows(rows: QuestionSelectionRow[], selectedIds: string[], missingMessage: string) {
+  const normalizedIds = normalizeDistinctIds(selectedIds);
+  const rawIdsCount = selectedIds.map((value) => value.trim()).filter(Boolean).length;
+
+  if (normalizedIds.length !== rawIdsCount) {
+    throw new Error("לא ניתן לבחור את אותה שאלה יותר מפעם אחת באותו מבחן.");
+  }
+
+  const rowsById = new Map(rows.map((row) => [row.id, row]));
+  const selectedRows = normalizedIds
+    .map((questionId) => rowsById.get(questionId))
+    .filter((row): row is QuestionSelectionRow => Boolean(row));
+
+  if (selectedRows.length !== normalizedIds.length) {
+    throw new Error(missingMessage);
+  }
+
+  return selectedRows;
+}
+
+async function getSelectedQuestionRowsByIds(
+  client: PoolClient,
+  input: {
+    selectedIds: string[];
+    allowedUnits: QuestionUnit[];
+    missingMessage: string;
+    unit?: QuestionUnit;
+    bonusOnly?: boolean;
+  },
+) {
+  const normalizedIds = normalizeDistinctIds(input.selectedIds);
+
+  if (normalizedIds.length === 0) {
+    return [] as QuestionSelectionRow[];
+  }
+
+  const values: unknown[] = [normalizedIds, input.allowedUnits];
+  const unitCondition = input.unit ? ` AND q.unit = $${values.push(input.unit)}` : "";
+  const bonusCondition = input.bonusOnly ? " AND q.is_bonus_source = TRUE" : "";
+  const result = await client.query<QuestionSelectionRow>(
+    `
+      SELECT
+        q.id,
+        q.text,
+        q.answer,
+        q.question_type,
+        q.choice_mode,
+        q.choice_options,
+        q.is_bonus_source,
+        q.unit,
+        q.source,
+        q.source_reference,
+        COALESCE(array_remove(array_agg(DISTINCT s.id), NULL), ARRAY[]::TEXT[]) AS subject_ids,
+        COALESCE(array_remove(array_agg(DISTINCT st.id), NULL), ARRAY[]::TEXT[]) AS stage_ids,
+        COALESCE(array_remove(array_agg(DISTINCT s.name), NULL), ARRAY[]::TEXT[]) AS subject_names,
+        COALESCE(array_remove(array_agg(DISTINCT st.name), NULL), ARRAY[]::TEXT[]) AS stage_names
+      FROM questions q
+      LEFT JOIN question_subjects qs ON qs.question_id = q.id
+      LEFT JOIN subjects s ON s.id = qs.subject_id
+      LEFT JOIN question_stages qst ON qst.question_id = q.id
+      LEFT JOIN stages st ON st.id = qst.stage_id
+      WHERE q.is_active = TRUE
+        AND q.id = ANY($1::text[])
+        AND q.unit = ANY($2::text[])
+        ${unitCondition}
+        ${bonusCondition}
+      GROUP BY q.id
+    `,
+    values,
+  );
+
+  return orderQuestionSelectionRows(result.rows, input.selectedIds, input.missingMessage);
+}
+
+async function insertTestQuestionSnapshot(
+  client: PoolClient,
+  input: {
+    testId: string;
+    question: TestBuilderQuestion;
+    orderIndex: number;
+    isBonus: boolean;
+  },
+) {
+  await client.query(
+    `
+      INSERT INTO test_questions (
+        id, test_id, question_id, order_index, is_bonus, prompt, question_type, choice_mode, choice_options, expected_answer, subject_names, stage_names
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12)
+    `,
+    [
+      nanoid(),
+      input.testId,
+      input.question.id,
+      input.orderIndex,
+      input.isBonus,
+      input.question.text,
+      input.question.questionType,
+      input.question.choiceMode,
+      JSON.stringify(input.question.choiceOptions),
+      input.question.answer,
+      input.question.subjectNames,
+      input.question.stageNames,
+    ],
+  );
 }
 
 type QueryFn = <T extends QueryResultRow>(text: string, values?: unknown[]) => Promise<{ rows: T[] }>;
@@ -1536,7 +1662,7 @@ async function getQuestionPoolsForTestBuilder(input: {
     eligiblePool = eligiblePool.filter((row) => !excludedQuestionIds.has(row.id));
   }
 
-  if (input.selectionMode === "filtered") {
+  if (input.selectionMode === "filtered" || input.selectionMode === "manual") {
     eligiblePool = eligiblePool.filter((row) => {
       const subjectMatch =
         input.subjectIds.length === 0 ||
@@ -1595,11 +1721,8 @@ export async function getTestDraftQuestions(input: {
   let selectedPool: QuestionSelectionRow[] = [];
 
   if (explicitIds.length > 0) {
-    const explicitSelectionPool =
-      input.selectionMode === "manual" && !input.bonusOnly ? basePool : eligiblePool;
-
     selectedPool = resolveExactQuestionSelection(
-      explicitSelectionPool,
+      eligiblePool,
       explicitIds,
       input.bonusOnly
         ? "חלק משאלות הבונוס שנבחרו כבר לא זמינות יותר. יש לרענן את המסך ולנסות שוב."
@@ -2329,59 +2452,148 @@ export async function createTest(input: {
 
     let orderIndex = 1;
     for (const question of selectedQuestions) {
-      await client.query(
-        `
-          INSERT INTO test_questions (
-            id, test_id, question_id, order_index, is_bonus, prompt, question_type, choice_mode, choice_options, expected_answer, subject_names, stage_names
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12)
-        `,
-        [
-          nanoid(),
-          testId,
-          question.id,
-          orderIndex,
-          false,
-          question.text,
-          question.questionType,
-          question.choiceMode,
-          JSON.stringify(question.choiceOptions),
-          question.answer,
-          question.subjectNames,
-          question.stageNames,
-        ],
-      );
+      await insertTestQuestionSnapshot(client, {
+        testId,
+        question,
+        orderIndex,
+        isBonus: false,
+      });
       orderIndex += 1;
     }
 
     for (const question of bonusQuestions) {
-      await client.query(
-        `
-          INSERT INTO test_questions (
-            id, test_id, question_id, order_index, is_bonus, prompt, question_type, choice_mode, choice_options, expected_answer, subject_names, stage_names
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12)
-        `,
-        [
-          nanoid(),
-          testId,
-          question.id,
-          orderIndex,
-          true,
-          question.text,
-          question.questionType,
-          question.choiceMode,
-          JSON.stringify(question.choiceOptions),
-          question.answer,
-          question.subjectNames,
-          question.stageNames,
-        ],
-      );
+      await insertTestQuestionSnapshot(client, {
+        testId,
+        question,
+        orderIndex,
+        isBonus: true,
+      });
       orderIndex += 1;
     }
   });
 
   return testId;
+}
+
+export async function updateTestQuestions(input: {
+  testId: string;
+  allowedUnits?: QuestionUnit[];
+  regularQuestionIds: string[];
+  bonusQuestionIds: string[];
+}) {
+  const allowedUnits = normalizeUnitFilter(input.allowedUnits);
+  const regularQuestionIds = normalizeDistinctIds(input.regularQuestionIds);
+  const bonusQuestionIds = normalizeDistinctIds(input.bonusQuestionIds);
+  const allSelectedQuestionIds = [...regularQuestionIds, ...bonusQuestionIds];
+
+  if (allowedUnits.length === 0) {
+    throw new Error("אין הרשאה לעריכת המבחן.");
+  }
+
+  if (regularQuestionIds.length === 0) {
+    throw new Error("מבחן חייב להכיל לפחות שאלה רגילה אחת.");
+  }
+
+  if (new Set(allSelectedQuestionIds).size !== allSelectedQuestionIds.length) {
+    throw new Error("לא ניתן לבחור את אותה שאלה יותר מפעם אחת באותו מבחן.");
+  }
+
+  return withTransaction(async (client) => {
+    const testResult = await client.query<{
+      id: string;
+      title: string;
+      status: TestDetails["status"];
+      unit: QuestionUnit;
+      share_token: string | null;
+      started_at: string | null;
+      submitted_at: string | null;
+      graded_at: string | null;
+    }>(
+      `
+        SELECT id, title, status, unit, share_token, started_at::text, submitted_at::text, graded_at::text
+        FROM tests
+        WHERE id = $1
+          AND unit = ANY($2::text[])
+        FOR UPDATE
+      `,
+      [input.testId, allowedUnits],
+    );
+    const test = testResult.rows[0];
+
+    if (!test) {
+      throw new Error("המבחן לא נמצא או שאין הרשאה לערוך אותו.");
+    }
+
+    if (test.status !== "generated" && test.status !== "sent") {
+      throw new Error("אפשר לערוך שאלות רק במבחן שעדיין לא הוגש או נבדק.");
+    }
+
+    if (test.started_at || test.submitted_at || test.graded_at) {
+      throw new Error("אי אפשר לערוך שאלות אחרי שהנבחן התחיל את המבחן.");
+    }
+
+    const regularRows = await getSelectedQuestionRowsByIds(client, {
+      selectedIds: input.regularQuestionIds,
+      allowedUnits,
+      unit: test.unit,
+      missingMessage: "חלק מהשאלות שנבחרו אינן פעילות או אינן שייכות ליחידת המבחן.",
+    });
+    const bonusRows =
+      bonusQuestionIds.length > 0
+        ? await getSelectedQuestionRowsByIds(client, {
+            selectedIds: input.bonusQuestionIds,
+            allowedUnits,
+            bonusOnly: true,
+            missingMessage: "חלק משאלות הבונוס שנבחרו אינן פעילות או אינן מסומנות כשאלות בונוס.",
+          })
+        : [];
+    const regularQuestions = regularRows.map(mapTestBuilderQuestion);
+    const bonusQuestions = bonusRows.map(mapTestBuilderQuestion);
+    const nextQuestionCount = regularQuestions.length + bonusQuestions.length;
+
+    await client.query("DELETE FROM test_questions WHERE test_id = $1", [test.id]);
+
+    let orderIndex = 1;
+    for (const question of regularQuestions) {
+      await insertTestQuestionSnapshot(client, {
+        testId: test.id,
+        question,
+        orderIndex,
+        isBonus: false,
+      });
+      orderIndex += 1;
+    }
+
+    for (const question of bonusQuestions) {
+      await insertTestQuestionSnapshot(client, {
+        testId: test.id,
+        question,
+        orderIndex,
+        isBonus: true,
+      });
+      orderIndex += 1;
+    }
+
+    await client.query(
+      `
+        UPDATE tests
+        SET question_count = $1,
+            selection_mode = 'manual',
+            updated_at = NOW()
+        WHERE id = $2
+      `,
+      [nextQuestionCount, test.id],
+    );
+
+    return {
+      id: test.id,
+      title: test.title,
+      unit: test.unit,
+      status: test.status,
+      shareToken: test.share_token,
+      questionCount: nextQuestionCount,
+    };
+  });
 }
 
 export async function cloneTestForNewStudent(input: {
@@ -2533,6 +2745,7 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string, units?: Quest
 
   const questionsResult = await runQuery<{
     id: string;
+    question_id: string | null;
     order_index: number;
     is_bonus: boolean;
     prompt: string;
@@ -2549,6 +2762,7 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string, units?: Quest
     `
       SELECT
         id,
+        question_id,
         order_index,
         is_bonus,
         prompt,
@@ -2603,6 +2817,7 @@ async function getTestByIdWithQuery(runQuery: QueryFn, id: string, units?: Quest
 
       return {
         id: row.id,
+        questionBankId: row.question_id,
         orderIndex: row.order_index,
         isBonus: row.is_bonus,
         prompt: choiceData.text,

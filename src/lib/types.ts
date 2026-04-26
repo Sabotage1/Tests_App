@@ -102,6 +102,7 @@ export type TestListItem = {
 
 export type TestQuestion = {
   id: string;
+  questionBankId: string | null;
   orderIndex: number;
   isBonus: boolean;
   prompt: string;

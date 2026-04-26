@@ -13,7 +13,8 @@ import { getAccessibleUnitsForUser, requireUser } from "@/lib/auth";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { MultipleChoicePreview } from "@/components/MultipleChoicePreview";
 import { SubmitButton } from "@/components/SubmitButton";
-import { getDefaultTestDurationMinutes, getTestById } from "@/lib/repository";
+import { TestQuestionsEditor } from "@/components/TestQuestionsEditor";
+import { getDefaultTestDurationMinutes, getQuestions, getTestById } from "@/lib/repository";
 
 type TestPageProps = {
   params: Promise<{ id: string }>;
@@ -23,6 +24,8 @@ type TestPageProps = {
     mailError?: string;
     inviteMail?: string;
     inviteMailError?: string;
+    questionsError?: string;
+    questionsSaved?: string;
     reused?: string;
   }>;
 };
@@ -62,8 +65,9 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
   const user = await requireUser();
   const { id } = await params;
   const query = await searchParams;
+  const accessibleUnits = getAccessibleUnitsForUser(user);
   const [test, defaultDurationMinutes] = await Promise.all([
-    getTestById(id, getAccessibleUnitsForUser(user)),
+    getTestById(id, accessibleUnits),
     getDefaultTestDurationMinutes(),
   ]);
   const solvedMinutes = test ? getSolvedMinutes(test.startedAt, test.submittedAt) : null;
@@ -74,6 +78,16 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
 
   const bonusQuestionCount = test.questions.filter((question) => question.isBonus).length;
   const regularQuestionCount = test.questions.length - bonusQuestionCount;
+  const canEditQuestions =
+    user.role !== "viewer" &&
+    (test.status === "generated" || test.status === "sent") &&
+    !test.startedAt &&
+    !test.submittedAt &&
+    !test.gradedAt;
+  const canMapQuestionsToBank = test.questions.every((question) => question.questionBankId);
+  const questionBank = canEditQuestions && canMapQuestionsToBank ? await getQuestions(accessibleUnits) : [];
+  const regularQuestionBank = questionBank.filter((question) => question.isActive === 1 && question.unit === test.unit);
+  const bonusQuestionBank = questionBank.filter((question) => question.isActive === 1 && question.isBonusSource);
 
   return (
     <div className="stack">
@@ -132,7 +146,29 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
       {query.inviteMail === "sent" ? <div className="alert">קישור המבחן נשלח בהצלחה לחניך.</div> : null}
       {query.inviteMailError ? <div className="alert">{query.inviteMailError}</div> : null}
       {query.durationSaved ? <div className="alert">משך המבחן עודכן.</div> : null}
+      {query.questionsSaved ? <div className="alert">שאלות המבחן עודכנו.</div> : null}
+      {query.questionsError ? <div className="alert">{query.questionsError}</div> : null}
       {query.reused === "1" ? <div className="alert">נוצר מבחן חדש והקישור לתלמיד הועתק אוטומטית.</div> : null}
+
+      {canEditQuestions && canMapQuestionsToBank ? (
+        <div className="card">
+          <TestQuestionsEditor
+            bonusQuestions={bonusQuestionBank}
+            initialBonusQuestionIds={test.questions
+              .filter((question) => question.isBonus && question.questionBankId)
+              .map((question) => question.questionBankId!)}
+            initialRegularQuestionIds={test.questions
+              .filter((question) => !question.isBonus && question.questionBankId)
+              .map((question) => question.questionBankId!)}
+            regularQuestions={regularQuestionBank}
+            testId={test.id}
+            unit={test.unit}
+          />
+        </div>
+      ) : null}
+      {canEditQuestions && !canMapQuestionsToBank ? (
+        <div className="alert">המבחן הזה נוצר כעותק ישן, ולכן אי אפשר למפות את כל השאלות שלו למאגר לצורך עריכה.</div>
+      ) : null}
 
       <div className="grid grid-2">
         <div className="card">

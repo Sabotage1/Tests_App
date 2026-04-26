@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { INITIAL_STAGES, INITIAL_SUBJECTS, MISSING_ANSWER_TEXT } from "@/lib/constants";
+import { looksLikeLegacyMultipleChoiceText } from "@/lib/multiple-choice";
 
 type SeedQuestion = {
   text: string;
@@ -131,7 +132,7 @@ function parseGroundQuestions(rawText: string): SeedQuestion[] {
       answer: MISSING_ANSWER_TEXT,
       source: "מבחן חזרה לכשירות בעמדת הקרקע",
       sourceReference: `שאלה ${number}`,
-      questionType: /^(א|ב|ג|ד|ה|ו)\./m.test(text) ? "multiple_choice" : "open",
+      questionType: looksLikeLegacyMultipleChoiceText(text) ? "multiple_choice" : "open",
       stageNames: ["מבחן חזרה לכשירות קרקע"],
       subjectNames: classifySubjects(text),
     };
@@ -159,7 +160,7 @@ function parseTowerQuestions(rawText: string): SeedQuestion[] {
       .map(cleanupLine)
       .filter(Boolean);
 
-    const optionIndex = lines.findIndex((line) => /^(א|ב|ג|ד|ה|ו)[\.\s]/u.test(line));
+    const hasMultipleChoiceOptions = looksLikeLegacyMultipleChoiceText(lines.join("\n"));
     const answerStartsWithSentence = lines.findIndex((line, index) => {
       if (index === 0) {
         return false;
@@ -171,7 +172,7 @@ function parseTowerQuestions(rawText: string): SeedQuestion[] {
     let questionLines = lines;
     let answerLines: string[] = [];
 
-    if (optionIndex >= 0) {
+    if (hasMultipleChoiceOptions) {
       questionLines = lines;
     } else if (answerStartsWithSentence > 0) {
       questionLines = lines.slice(0, answerStartsWithSentence);
@@ -189,7 +190,7 @@ function parseTowerQuestions(rawText: string): SeedQuestion[] {
       answer,
       source: "מבחן עיוני לעמדת TOWER",
       sourceReference: `שאלה ${number}`,
-      questionType: optionIndex >= 0 ? "multiple_choice" : "open",
+      questionType: hasMultipleChoiceOptions ? "multiple_choice" : "open",
       stageNames: ["מבמכ מסכם הסבת TWR"],
       subjectNames: classifySubjects(`${questionText}\n${answer}`),
     };

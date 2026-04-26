@@ -50,6 +50,7 @@ import {
   startTestByToken,
   submitTestByToken,
   updateUser,
+  updateTestQuestions,
   updateTestDuration,
   upsertRecipientList,
   upsertLookup,
@@ -1068,6 +1069,49 @@ export async function createTestAction(formData: FormData) {
   }
 
   redirect(redirectPath);
+}
+
+export async function updateTestQuestionsAction(formData: FormData) {
+  const user = await requireEditor();
+  const accessibleUnits = getAccessibleUnitsForUser(user);
+  const testId = formData.get("testId")?.toString() ?? "";
+  const unit = getOptionalQuestionUnit(formData.get("unit"));
+
+  if (!testId) {
+    redirect(buildTestsLibraryRedirectPath(unit));
+  }
+
+  try {
+    const updatedTest = await updateTestQuestions({
+      testId,
+      allowedUnits: accessibleUnits,
+      regularQuestionIds: getMany(formData, "regularQuestionIds"),
+      bonusQuestionIds: getMany(formData, "bonusQuestionIds"),
+    });
+
+    await logUserAudit(user, {
+      action: "test.questions_updated",
+      entityType: "test",
+      entityId: updatedTest.id,
+      entityLabel: updatedTest.title,
+      details: {
+        unit: updatedTest.unit,
+        questionCount: updatedTest.questionCount,
+        status: updatedTest.status,
+      },
+    });
+
+    revalidateTestCollections();
+    revalidatePath(`/tests/${testId}`);
+    if (updatedTest.shareToken) {
+      revalidatePath(`/share/${updatedTest.shareToken}`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "עדכון שאלות המבחן נכשל";
+    redirect(`/tests/${testId}?questionsError=${encodeURIComponent(message)}` as RedirectPath);
+  }
+
+  redirect(`/tests/${testId}?questionsSaved=1` as RedirectPath);
 }
 
 export async function prepareTestDraftAction(formData: FormData) {
