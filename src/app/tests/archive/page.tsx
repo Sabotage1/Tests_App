@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit, type TestStatus } from "@/lib/constants";
+import { formatIsraelDateTime, getIsraelYear } from "@/lib/date-time";
 import { getTests } from "@/lib/repository";
 
 type ArchivePageProps = {
@@ -16,7 +17,7 @@ const STATUS_LABELS: Record<TestStatus, string> = {
 };
 
 function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString("he-IL") : "-";
+  return formatIsraelDateTime(value);
 }
 
 function formatGrade(value: number | null) {
@@ -24,11 +25,7 @@ function formatGrade(value: number | null) {
 }
 
 function getArchiveYear(value: string | null) {
-  if (!value) {
-    return null;
-  }
-
-  return String(new Date(value).getFullYear());
+  return getIsraelYear(value);
 }
 
 export default async function ArchiveTestsPage({ searchParams }: ArchivePageProps) {

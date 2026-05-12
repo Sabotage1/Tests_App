@@ -5,6 +5,7 @@ import { getAccessibleUnitsForUser, requireUser } from "@/lib/auth";
 import { AiGradingButton } from "@/components/AiGradingButton";
 import { MultipleChoicePreview } from "@/components/MultipleChoicePreview";
 import { SubmitButton } from "@/components/SubmitButton";
+import { formatIsraelDateTime } from "@/lib/date-time";
 import { getBonusQuestionPoints, getTestById } from "@/lib/repository";
 
 type GradePageProps = {
@@ -60,8 +61,7 @@ export default async function GradePage({ params, searchParams }: GradePageProps
           <h2>בדיקת מבחן</h2>
           <p>השוואת תשובת תלמיד לתשובה הצפויה, עם ציון ומשוב לכל שאלה.</p>
           <p className="muted">
-            התחיל: {test.startedAt ? new Date(test.startedAt).toLocaleString("he-IL") : "-"} | הוגש:{" "}
-            {test.submittedAt ? new Date(test.submittedAt).toLocaleString("he-IL") : "-"} | זמן פתרון:{" "}
+            התחיל: {formatIsraelDateTime(test.startedAt)} | הוגש: {formatIsraelDateTime(test.submittedAt)} | זמן פתרון:{" "}
             {solvedMinutes !== null ? `${solvedMinutes} דקות` : "-"}
           </p>
           <p className="muted">

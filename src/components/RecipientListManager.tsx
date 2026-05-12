@@ -5,6 +5,7 @@ import { useState } from "react";
 import { deleteRecipientListAction, saveRecipientListAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { type QuestionUnit } from "@/lib/constants";
+import { formatIsraelDateTime } from "@/lib/date-time";
 import type { RecipientList } from "@/lib/types";
 
 type RecipientDraft = {
@@ -88,7 +89,7 @@ function RecipientListEditor({
 
       {recipientList ? (
         <div className="muted">
-          נוצרה על ידי {recipientList.createdByName} | עודכנה {new Date(recipientList.updatedAt).toLocaleString("he-IL")}
+          נוצרה על ידי {recipientList.createdByName} | עודכנה {formatIsraelDateTime(recipientList.updatedAt)}
         </div>
       ) : null}
 

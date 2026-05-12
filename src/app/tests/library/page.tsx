@@ -5,6 +5,7 @@ import { SubmitButton } from "@/components/SubmitButton";
 import { TestLibraryResendForm } from "@/components/TestLibraryResendForm";
 import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit, type TestStatus } from "@/lib/constants";
+import { formatIsraelDateTime } from "@/lib/date-time";
 import { getRecipientLists, getTests } from "@/lib/repository";
 
 type TestLibraryPageProps = {
@@ -27,7 +28,7 @@ const STATUS_LABELS: Record<TestStatus, string> = {
 };
 
 function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString("he-IL") : "-";
+  return formatIsraelDateTime(value);
 }
 
 function formatGrade(value: number | null) {

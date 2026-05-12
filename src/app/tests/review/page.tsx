@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { getSelectedUnitForUser, getUnitOrderForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
+import { formatIsraelDateTime } from "@/lib/date-time";
 import { getTests } from "@/lib/repository";
 
 function getSolvedMinutes(startedAt: string | null, submittedAt: string | null) {
@@ -72,7 +73,7 @@ export default async function ReviewTestsPage({ searchParams }: ReviewTestsPageP
                     <div className="muted">{QUESTION_UNIT_LABELS[test.unit]}</div>
                   </td>
                   <td>{test.studentName || test.studentEmail || "-"}</td>
-                  <td>{test.submittedAt ? new Date(test.submittedAt).toLocaleString("he-IL") : "-"}</td>
+                  <td>{formatIsraelDateTime(test.submittedAt)}</td>
                   <td>{solvedMinutes !== null ? `${solvedMinutes} דקות` : "-"}</td>
                   <td>{test.questionCount}</td>
                   <td>

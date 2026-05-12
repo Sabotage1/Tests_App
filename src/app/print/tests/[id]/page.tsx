@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getAccessibleUnitsForUser, requireUser } from "@/lib/auth";
 import { MultipleChoicePreview } from "@/components/MultipleChoicePreview";
 import { PrintButton } from "@/components/PrintButton";
+import { formatIsraelDateTime } from "@/lib/date-time";
 import { getTestById } from "@/lib/repository";
 
 type PrintPageProps = {
@@ -11,7 +12,7 @@ type PrintPageProps = {
 
 function getPerformedAtLabel(startedAt: string | null, submittedAt: string | null, sentAt: string | null) {
   const performedAt = startedAt || submittedAt || sentAt;
-  return performedAt ? new Date(performedAt).toLocaleString("he-IL") : "-";
+  return formatIsraelDateTime(performedAt);
 }
 
 export default async function PrintTestPage({ params }: PrintPageProps) {
@@ -44,8 +45,8 @@ export default async function PrintTestPage({ params }: PrintPageProps) {
       <p>תאריך ביצוע הבחינה: {performedAtLabel}</p>
       {isGraded ? (
         <>
-          <p>מועד התחלה: {test.startedAt ? new Date(test.startedAt).toLocaleString("he-IL") : "-"}</p>
-          <p>מועד הגשה: {test.submittedAt ? new Date(test.submittedAt).toLocaleString("he-IL") : "-"}</p>
+          <p>מועד התחלה: {formatIsraelDateTime(test.startedAt)}</p>
+          <p>מועד הגשה: {formatIsraelDateTime(test.submittedAt)}</p>
           <p>ציון סופי: {test.grade ?? "-"}</p>
         </>
       ) : null}

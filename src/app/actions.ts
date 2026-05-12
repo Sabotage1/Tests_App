@@ -22,6 +22,7 @@ import {
   changeUserPassword,
   clearFailedLoginAttempts,
   cloneTestForNewStudent,
+  completeExpiredTestForReview,
   createAuditLog,
   deleteRecipientList,
   createTest,
@@ -56,7 +57,8 @@ import {
   upsertLookup,
   upsertQuestion,
 } from "@/lib/repository";
-import { getChoiceMode, normalizeChoiceOptions, serializeChoiceAnswer } from "@/lib/multiple-choice";
+import { getChoiceMode, normalizeChoiceOptions } from "@/lib/multiple-choice";
+import { getTestAnswersFromFormData } from "@/lib/test-form";
 
 function getMany(formData: FormData, name: string) {
   return formData
@@ -1427,6 +1429,42 @@ export async function updateTestDurationAction(formData: FormData) {
   redirect(`/tests/${testId}?durationSaved=1`);
 }
 
+export async function recoverExpiredTestAction(formData: FormData) {
+  const user = await requireEditor();
+  const testId = formData.get("testId")?.toString() ?? "";
+
+  try {
+    await getAccessibleTestOrThrow(user, testId);
+    const recoveredTest = await completeExpiredTestForReview({
+      testId,
+      units: getAccessibleUnitsForUser(user),
+    });
+
+    await logUserAudit(user, {
+      action: "test.timeout_recovered",
+      entityType: "test",
+      entityId: recoveredTest.id,
+      entityLabel: recoveredTest.title,
+      details: {
+        savedAnswerCount: recoveredTest.savedAnswerCount,
+        submittedAt: recoveredTest.submittedAt,
+      },
+    });
+
+    revalidateTestCollections();
+    revalidatePath(`/tests/${testId}`);
+    revalidatePath(`/tests/${testId}/grade`);
+    if (recoveredTest.shareToken) {
+      revalidatePath(`/share/${recoveredTest.shareToken}`);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "שחזור המבחן נכשל";
+    redirect(`/tests/${testId}?timeoutRecoveryError=${encodeURIComponent(message)}`);
+  }
+
+  redirect(`/tests/${testId}?timeoutRecovered=1`);
+}
+
 export async function startSharedTestAction(formData: FormData) {
   const token = formData.get("token")?.toString() ?? "";
   let testId = "";
@@ -1464,14 +1502,7 @@ export async function startSharedTestAction(formData: FormData) {
 
 export async function submitSharedTestAction(formData: FormData) {
   const token = formData.get("token")?.toString() ?? "";
-  const ids = getMany(formData, "questionIds");
-  const answers = ids.map((id) => ({
-    id,
-    answer:
-      formData.get(`questionType:${id}`)?.toString() === "multiple_choice"
-        ? serializeChoiceAnswer(formData.getAll(`answer:${id}`).map((value) => value.toString()))
-        : formData.get(`answer:${id}`)?.toString() ?? "",
-  }));
+  const answers = getTestAnswersFromFormData(formData);
   let testId = "";
 
   try {
@@ -1480,6 +1511,7 @@ export async function submitSharedTestAction(formData: FormData) {
       answers,
       studentName: formData.get("studentName")?.toString() ?? "",
       studentEmail: formData.get("studentEmail")?.toString() ?? "",
+      submittedByTimer: formData.get("submissionMode")?.toString() === "timer",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "שליחת המבחן נכשלה";

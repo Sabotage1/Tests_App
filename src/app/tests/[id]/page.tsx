@@ -5,6 +5,7 @@ import { QUESTION_UNIT_LABELS } from "@/lib/constants";
 import {
   createShareLinkAction,
   deleteTestAction,
+  recoverExpiredTestAction,
   sendGradeEmailAction,
   sendTestInvitationEmailAction,
   updateTestDurationAction,
@@ -14,6 +15,7 @@ import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { MultipleChoicePreview } from "@/components/MultipleChoicePreview";
 import { SubmitButton } from "@/components/SubmitButton";
 import { TestQuestionsEditor } from "@/components/TestQuestionsEditor";
+import { formatIsraelDateTime } from "@/lib/date-time";
 import { getDefaultTestDurationMinutes, getQuestions, getTestById } from "@/lib/repository";
 
 type TestPageProps = {
@@ -27,6 +29,8 @@ type TestPageProps = {
     questionsError?: string;
     questionsSaved?: string;
     reused?: string;
+    timeoutRecovered?: string;
+    timeoutRecoveryError?: string;
   }>;
 };
 
@@ -78,6 +82,21 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
 
   const bonusQuestionCount = test.questions.filter((question) => question.isBonus).length;
   const regularQuestionCount = test.questions.length - bonusQuestionCount;
+  const deadline =
+    test.startedAt && test.durationMinutes > 0
+      ? new Date(new Date(test.startedAt).getTime() + test.durationMinutes * 60 * 1000)
+      : null;
+  const savedAnswerCount = test.questions.filter(
+    (question) => Boolean(question.studentAnswer?.trim()) || question.studentAnswerOptionIds.length > 0,
+  ).length;
+  const canRecoverExpiredTest =
+    user.role !== "viewer" &&
+    (test.status === "generated" || test.status === "sent") &&
+    Boolean(test.startedAt) &&
+    !test.submittedAt &&
+    !test.gradedAt &&
+    deadline !== null &&
+    Date.now() > deadline.getTime();
   const canEditQuestions =
     user.role !== "viewer" &&
     (test.status === "generated" || test.status === "sent") &&
@@ -125,6 +144,18 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
           <Link className="button button-secondary" href={`/tests/${test.id}/grade`}>
             {test.status === "graded" ? "צפייה / עריכת בדיקה" : "בדיקה וציונים"}
           </Link>
+          {canRecoverExpiredTest ? (
+            <form action={recoverExpiredTestAction}>
+              <input type="hidden" name="testId" value={test.id} />
+              <SubmitButton
+                className="button button-danger"
+                confirmMessage={`לשחזר את המבחן ולהעביר אותו לבדיקה? נמצאו ${savedAnswerCount} תשובות שמורות מתוך ${test.questionCount}.`}
+                pendingLabel="משחזר מבחן..."
+              >
+                שחזור לבדיקה
+              </SubmitButton>
+            </form>
+          ) : null}
           {user.role === "admin" ? (
             <form action={deleteTestAction}>
               <input type="hidden" name="testId" value={test.id} />
@@ -149,6 +180,16 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
       {query.questionsSaved ? <div className="alert">שאלות המבחן עודכנו.</div> : null}
       {query.questionsError ? <div className="alert">{query.questionsError}</div> : null}
       {query.reused === "1" ? <div className="alert">נוצר מבחן חדש והקישור לתלמיד הועתק אוטומטית.</div> : null}
+      {query.timeoutRecovered ? (
+        <div className="alert">המבחן שוחזר והועבר לרשימת בדיקה לפי זמן הסיום המקורי.</div>
+      ) : null}
+      {query.timeoutRecoveryError ? <div className="alert">{query.timeoutRecoveryError}</div> : null}
+      {canRecoverExpiredTest ? (
+        <div className="alert">
+          זמן המבחן הסתיים והוא עדיין לא הוגש. אפשר לשחזר אותו לבדיקה עם {savedAnswerCount} תשובות שמורות מתוך{" "}
+          {test.questionCount}.
+        </div>
+      ) : null}
 
       {canEditQuestions && canMapQuestionsToBank ? (
         <div className="card">
@@ -176,12 +217,12 @@ export default async function TestDetailsPage({ params, searchParams }: TestPage
           <p>יחידה: {QUESTION_UNIT_LABELS[test.unit]}</p>
           <p>שיטת בחירה: {SELECTION_MODE_LABELS[test.selectionMode] ?? "שיטת בחירה מותאמת"}</p>
           <p>משך: {test.durationMinutes === 0 ? "ללא הגבלת זמן" : `${test.durationMinutes} דקות`}</p>
-          <p>נוצר: {new Date(test.createdAt).toLocaleString("he-IL")}</p>
-          <p>נשלח: {test.sentAt ? new Date(test.sentAt).toLocaleString("he-IL") : "-"}</p>
-          <p>התחיל: {test.startedAt ? new Date(test.startedAt).toLocaleString("he-IL") : "-"}</p>
-          <p>הוגש: {test.submittedAt ? new Date(test.submittedAt).toLocaleString("he-IL") : "-"}</p>
+          <p>נוצר: {formatIsraelDateTime(test.createdAt)}</p>
+          <p>נשלח: {formatIsraelDateTime(test.sentAt)}</p>
+          <p>התחיל: {formatIsraelDateTime(test.startedAt)}</p>
+          <p>הוגש: {formatIsraelDateTime(test.submittedAt)}</p>
           <p>משך פתרון בפועל: {solvedMinutes !== null ? `${solvedMinutes} דקות` : "-"}</p>
-          <p>נבדק: {test.gradedAt ? new Date(test.gradedAt).toLocaleString("he-IL") : "-"}</p>
+          <p>נבדק: {formatIsraelDateTime(test.gradedAt)}</p>
           <p>בודק: {test.gradedByName || "-"}</p>
           <p>תלמיד: {test.studentName || "-"}</p>
           <p>מייל: {test.studentEmail || "-"}</p>

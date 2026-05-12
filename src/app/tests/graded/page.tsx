@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SubmitButton } from "@/components/SubmitButton";
 import { getAccessibleUnitsForUser, requireUser } from "@/lib/auth";
 import { QUESTION_UNIT_LABELS } from "@/lib/constants";
+import { formatIsraelDateTime, getIsraelYear } from "@/lib/date-time";
 import { getTests } from "@/lib/repository";
 
 type GradedTestsPageProps = {
@@ -21,7 +22,7 @@ const GRADE_LABELS: Record<GradeBand, string> = {
 };
 
 function formatDate(value: string | null) {
-  return value ? new Date(value).toLocaleString("he-IL") : "-";
+  return formatIsraelDateTime(value);
 }
 
 function formatGrade(value: number | null) {
@@ -29,7 +30,7 @@ function formatGrade(value: number | null) {
 }
 
 function getTestYear(dateValue: string | null) {
-  return dateValue ? String(new Date(dateValue).getFullYear()) : null;
+  return getIsraelYear(dateValue);
 }
 
 function isGradeBand(value: string | undefined): value is GradeBand {

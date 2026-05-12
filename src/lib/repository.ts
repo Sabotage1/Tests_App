@@ -13,6 +13,7 @@ import {
   type QuestionUnit,
   type UserRole,
 } from "@/lib/constants";
+import { formatIsraelDateTime } from "@/lib/date-time";
 import { query, withTransaction } from "@/lib/db";
 import {
   buildChoiceAnswerText,
@@ -2897,21 +2898,144 @@ export async function startTestByToken(token: string, studentName?: string, stud
   return result.rows[0]?.id as string;
 }
 
-export async function submitTestByToken(input: {
+function getTestDeadline(startedAt: string | null, durationMinutes: number) {
+  if (!startedAt || durationMinutes <= 0) {
+    return null;
+  }
+
+  return new Date(new Date(startedAt).getTime() + durationMinutes * 60 * 1000);
+}
+
+async function saveSubmittedAnswers(
+  client: PoolClient,
+  input: {
+    testId: string;
+    answers: Array<{ id: string; answer: string }>;
+  },
+) {
+  for (const answer of input.answers) {
+    const questionResult = await client.query<{
+      question_type: QuestionType;
+      choice_options: unknown;
+    }>(
+      `
+        SELECT question_type, choice_options
+        FROM test_questions
+        WHERE id = $1 AND test_id = $2
+      `,
+      [answer.id, input.testId],
+    );
+
+    const question = questionResult.rows[0];
+    if (!question) {
+      throw new Error("נשלחו תשובות לא תקינות עבור מבחן זה.");
+    }
+
+    const normalizedAnswer =
+      question.question_type === "multiple_choice"
+        ? (() => {
+            const selectedOptionIds = parseChoiceAnswer(answer.answer);
+            const validOptionIds = new Set(normalizeChoiceOptions(question.choice_options).map((option) => option.id));
+
+            if (selectedOptionIds.some((optionId) => !validOptionIds.has(optionId))) {
+              throw new Error("נשלחו תשובות לא תקינות עבור מבחן זה.");
+            }
+
+            return JSON.stringify(selectedOptionIds);
+          })()
+        : answer.answer.trim();
+
+    await client.query("UPDATE test_questions SET student_answer = $1 WHERE id = $2 AND test_id = $3", [
+      normalizedAnswer,
+      answer.id,
+      input.testId,
+    ]);
+  }
+}
+
+export async function saveTestDraftByToken(input: {
   token: string;
   answers: Array<{ id: string; answer: string }>;
-  studentName?: string;
-  studentEmail?: string;
 }) {
   return withTransaction(async (client) => {
     const testResult = await client.query<{
       id: string;
       status: string;
       started_at: string | null;
+      deadline_at: string | null;
       duration_minutes: number;
     }>(
       `
-        SELECT id, status, started_at::text, duration_minutes
+        SELECT
+          id,
+          status,
+          started_at::text,
+          CASE
+            WHEN started_at IS NULL OR duration_minutes <= 0 THEN NULL
+            ELSE (started_at + (duration_minutes || ' minutes')::interval)::text
+          END AS deadline_at,
+          duration_minutes
+        FROM tests
+        WHERE share_token = $1
+        FOR UPDATE
+      `,
+      [input.token],
+    );
+
+    const test = testResult.rows[0];
+    if (!test) {
+      throw new Error("המבחן לא נמצא.");
+    }
+
+    if (test.status === "completed" || test.status === "graded") {
+      throw new Error("המבחן כבר הוגש ולא ניתן לעדכן טיוטה.");
+    }
+
+    if (!test.started_at) {
+      throw new Error("המבחן עדיין לא התחיל.");
+    }
+
+    const deadline = test.deadline_at ? new Date(test.deadline_at) : getTestDeadline(test.started_at, test.duration_minutes);
+    if (deadline && Date.now() > deadline.getTime()) {
+      throw new Error("זמן המבחן הסתיים ולא ניתן לעדכן טיוטה.");
+    }
+
+    await saveSubmittedAnswers(client, {
+      testId: test.id,
+      answers: input.answers,
+    });
+
+    await client.query("UPDATE tests SET updated_at = NOW() WHERE id = $1", [test.id]);
+
+    return test.id;
+  });
+}
+
+export async function submitTestByToken(input: {
+  token: string;
+  answers: Array<{ id: string; answer: string }>;
+  studentName?: string;
+  studentEmail?: string;
+  submittedByTimer?: boolean;
+}) {
+  return withTransaction(async (client) => {
+    const testResult = await client.query<{
+      id: string;
+      status: string;
+      started_at: string | null;
+      deadline_at: string | null;
+      duration_minutes: number;
+    }>(
+      `
+        SELECT
+          id,
+          status,
+          started_at::text,
+          CASE
+            WHEN started_at IS NULL OR duration_minutes <= 0 THEN NULL
+            ELSE (started_at + (duration_minutes || ' minutes')::interval)::text
+          END AS deadline_at,
+          duration_minutes
         FROM tests
         WHERE share_token = $1
         FOR UPDATE
@@ -2928,66 +3052,120 @@ export async function submitTestByToken(input: {
       throw new Error("המבחן כבר הוגש ולא ניתן לשלוח אותו שוב.");
     }
 
-    if (test.duration_minutes > 0 && test.started_at) {
-      const deadline = new Date(test.started_at).getTime() + test.duration_minutes * 60 * 1000;
-      if (Date.now() > deadline) {
-        throw new Error("זמן המבחן הסתיים ולא ניתן להגיש אותו יותר.");
-      }
+    const deadline = test.deadline_at ? new Date(test.deadline_at) : getTestDeadline(test.started_at, test.duration_minutes);
+    const isAfterDeadline = deadline ? Date.now() > deadline.getTime() : false;
+    if (isAfterDeadline && !input.submittedByTimer) {
+      throw new Error("זמן המבחן הסתיים ולא ניתן להגיש אותו יותר.");
     }
 
-    for (const answer of input.answers) {
-      const questionResult = await client.query<{
-        question_type: QuestionType;
-        choice_options: unknown;
-      }>(
-        `
-          SELECT question_type, choice_options
-          FROM test_questions
-          WHERE id = $1 AND test_id = $2
-        `,
-        [answer.id, test.id],
-      );
+    await saveSubmittedAnswers(client, {
+      testId: test.id,
+      answers: input.answers,
+    });
 
-      const question = questionResult.rows[0];
-      if (!question) {
-        throw new Error("נשלחו תשובות לא תקינות עבור מבחן זה.");
-      }
+    const submittedAt = input.submittedByTimer && isAfterDeadline && test.deadline_at ? test.deadline_at : new Date().toISOString();
 
-      const normalizedAnswer =
-        question.question_type === "multiple_choice"
-          ? (() => {
-              const selectedOptionIds = parseChoiceAnswer(answer.answer);
-              const validOptionIds = new Set(normalizeChoiceOptions(question.choice_options).map((option) => option.id));
+    await client.query(
+      `
+        UPDATE tests
+        SET status = 'completed',
+            submitted_at = $1,
+            student_name = COALESCE(student_name, NULLIF($2, '')),
+            student_email = COALESCE(student_email, NULLIF($3, '')),
+            updated_at = NOW()
+        WHERE id = $4
+      `,
+      [submittedAt, input.studentName?.trim() ?? "", input.studentEmail?.trim() ?? "", test.id],
+    );
 
-              if (selectedOptionIds.some((optionId) => !validOptionIds.has(optionId))) {
-                throw new Error("נשלחו תשובות לא תקינות עבור מבחן זה.");
-              }
+    return test.id;
+  });
+}
 
-              return JSON.stringify(selectedOptionIds);
-            })()
-          : answer.answer.trim();
+export async function completeExpiredTestForReview(input: {
+  testId: string;
+  units?: QuestionUnit | QuestionUnit[];
+}) {
+  const allowedUnits = normalizeUnitFilter(input.units);
+  const values: unknown[] = [input.testId];
+  const unitCondition =
+    allowedUnits.length > 0 ? ` AND unit = ANY($${values.push(allowedUnits)}::text[])` : "";
 
-      await client.query("UPDATE test_questions SET student_answer = $1 WHERE id = $2 AND test_id = $3", [
-        normalizedAnswer,
-        answer.id,
-        test.id,
-      ]);
+  return withTransaction(async (client) => {
+    const testResult = await client.query<{
+      id: string;
+      title: string;
+      share_token: string | null;
+      status: string;
+      started_at: string | null;
+      submitted_at: string | null;
+      graded_at: string | null;
+      duration_minutes: number;
+      deadline_at: string | null;
+    }>(
+      `
+        SELECT
+          id,
+          title,
+          share_token,
+          status,
+          started_at::text,
+          submitted_at::text,
+          graded_at::text,
+          duration_minutes,
+          CASE
+            WHEN started_at IS NULL OR duration_minutes <= 0 THEN NULL
+            ELSE (started_at + (duration_minutes || ' minutes')::interval)::text
+          END AS deadline_at
+        FROM tests
+        WHERE id = $1
+        ${unitCondition}
+        FOR UPDATE
+      `,
+      values,
+    );
+
+    const test = testResult.rows[0];
+    if (!test) {
+      throw new Error("המבחן לא נמצא או שאין הרשאה אליו.");
+    }
+
+    if (test.status === "completed" || test.submitted_at) {
+      throw new Error("המבחן כבר הוגש לבדיקה.");
+    }
+
+    if (test.status === "graded" || test.graded_at) {
+      throw new Error("המבחן כבר נבדק.");
+    }
+
+    const deadline = test.deadline_at ? new Date(test.deadline_at) : getTestDeadline(test.started_at, test.duration_minutes);
+    if (!deadline || Date.now() <= deadline.getTime()) {
+      throw new Error("אפשר לשחזר רק מבחן שהתחיל ופג זמנו.");
     }
 
     await client.query(
       `
         UPDATE tests
         SET status = 'completed',
-            submitted_at = NOW(),
-            student_name = COALESCE(student_name, NULLIF($1, '')),
-            student_email = COALESCE(student_email, NULLIF($2, '')),
+            submitted_at = $1,
             updated_at = NOW()
-        WHERE id = $3
+        WHERE id = $2
       `,
-      [input.studentName?.trim() ?? "", input.studentEmail?.trim() ?? "", test.id],
+      [test.deadline_at ?? deadline.toISOString(), test.id],
     );
 
-    return test.id;
+    const savedAnswersResult = await client.query<{ count: string }>(
+      "SELECT COUNT(*)::text AS count FROM test_questions WHERE test_id = $1 AND NULLIF(student_answer, '') IS NOT NULL",
+      [test.id],
+    );
+
+    return {
+      id: test.id,
+      title: test.title,
+      shareToken: test.share_token,
+      submittedAt: test.deadline_at ?? deadline.toISOString(),
+      savedAnswerCount: Number(savedAnswersResult.rows[0]?.count ?? 0),
+    };
   });
 }
 
@@ -3103,7 +3281,7 @@ function buildGradeEmailHtml(test: TestDetails) {
 
 function buildTestInvitationEmailHtml(test: TestDetails, shareUrl: string) {
   const studentName = test.studentName ? escapeHtml(test.studentName) : "נבחן/ת";
-  const sentAt = test.sentAt ? new Date(test.sentAt).toLocaleString("he-IL") : "מיידית";
+  const sentAt = test.sentAt ? formatIsraelDateTime(test.sentAt) : "מיידית";
   const durationLabel =
     test.durationMinutes === 0 ? "ללא מגבלת זמן" : `${test.durationMinutes} דקות`;
 
@@ -3134,7 +3312,7 @@ function buildTestInvitationEmailHtml(test: TestDetails, shareUrl: string) {
 function buildReviewNotificationEmailHtml(test: TestDetails, reviewUrl: string | null) {
   const studentName = test.studentName ? escapeHtml(test.studentName) : "לא הוזן";
   const studentEmail = test.studentEmail ? escapeHtml(test.studentEmail) : "לא הוזן";
-  const submittedAt = test.submittedAt ? new Date(test.submittedAt).toLocaleString("he-IL") : "לא זמין";
+  const submittedAt = test.submittedAt ? formatIsraelDateTime(test.submittedAt) : "לא זמין";
   const reviewAction = reviewUrl
     ? `
       <p style="margin-top:24px">

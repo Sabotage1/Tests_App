@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { startSharedTestAction, submitSharedTestAction } from "@/app/actions";
 import { CountdownTimer } from "@/components/CountdownTimer";
 import { SubmitButton } from "@/components/SubmitButton";
+import { TestAnswerAutosave } from "@/components/TestAnswerAutosave";
+import { formatIsraelDateTime } from "@/lib/date-time";
 import { getChoiceOptionLabel } from "@/lib/multiple-choice";
 import { getSharedTestByToken } from "@/lib/repository";
 
@@ -28,9 +30,7 @@ export default async function SharePage({ params, searchParams }: SharePageProps
           <p>התשובות נשמרו במערכת והועברו לבדיקה.</p>
           {query.error ? <div className="alert">{query.error}</div> : null}
           <p className="muted">
-            {test.submittedAt
-              ? `מועד הגשה: ${new Date(test.submittedAt).toLocaleString("he-IL")}`
-              : null}
+            {test.submittedAt ? `מועד הגשה: ${formatIsraelDateTime(test.submittedAt)}` : null}
           </p>
         </div>
       </div>
@@ -44,7 +44,7 @@ export default async function SharePage({ params, searchParams }: SharePageProps
           <h2>{test.title}</h2>
           {query.error ? <div className="alert">{query.error}</div> : null}
           <p className="muted">
-            {test.sentAt ? `תאריך ושעת שליחה: ${new Date(test.sentAt).toLocaleString("he-IL")}` : null}
+            {test.sentAt ? `תאריך ושעת שליחה: ${formatIsraelDateTime(test.sentAt)}` : null}
           </p>
           <p>
             {test.durationMinutes === 0
@@ -82,8 +82,8 @@ export default async function SharePage({ params, searchParams }: SharePageProps
         <div>
           <h2>{test.title}</h2>
           <p className="muted">
-            {test.sentAt ? `תאריך ושעת שליחה: ${new Date(test.sentAt).toLocaleString("he-IL")} | ` : ""}
-            {`תחילת מענה: ${new Date(test.startedAt).toLocaleString("he-IL")}`}
+            {test.sentAt ? `תאריך ושעת שליחה: ${formatIsraelDateTime(test.sentAt)} | ` : ""}
+            {`תחילת מענה: ${formatIsraelDateTime(test.startedAt)}`}
           </p>
           <p>
             {deadline
@@ -91,12 +91,16 @@ export default async function SharePage({ params, searchParams }: SharePageProps
               : "זהו מבחן ללא מגבלת זמן. ניתן להגיש כשתסיים."}
           </p>
         </div>
-        {deadline ? <CountdownTimer deadlineIso={deadline} formId="student-test-form" /> : null}
+        <div>
+          {deadline ? <CountdownTimer deadlineIso={deadline} formId="student-test-form" /> : null}
+          <TestAnswerAutosave formId="student-test-form" token={token} />
+        </div>
       </div>
       <form action={submitSharedTestAction} id="student-test-form">
         <input type="hidden" name="token" value={token} />
         <input type="hidden" name="studentName" value={test.studentName ?? ""} />
         <input type="hidden" name="studentEmail" value={test.studentEmail ?? ""} />
+        <input type="hidden" name="submissionMode" value="manual" />
         <div className="stack">
           {test.questions.map((question) => (
             <div className="card" key={question.id}>

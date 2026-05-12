@@ -2,6 +2,7 @@ import type { Route } from "next";
 import Link from "next/link";
 
 import { requireAdmin } from "@/lib/auth";
+import { formatIsraelDateTime } from "@/lib/date-time";
 import { getAuditLogs } from "@/lib/repository";
 
 type AdminLogsPageProps = {
@@ -84,6 +85,7 @@ const DETAIL_LABELS: Record<string, string> = {
   role: "תפקיד",
   selectionMode: "שיטת בחירה",
   sentCount: "כמות מיילים שנשלחו",
+  savedAnswerCount: "תשובות שמורות",
   shareToken: "טוקן שיתוף",
   source: "מקור",
   sourceReference: "מספר שאלה",
@@ -92,6 +94,7 @@ const DETAIL_LABELS: Record<string, string> = {
   status: "סטטוס",
   studentEmail: "מייל נבחן",
   studentName: "שם נבחן",
+  submittedAt: "מועד הגשה",
   unit: "יחידה",
   units: "יחידות",
   username: "שם משתמש",
@@ -175,7 +178,7 @@ export default async function AdminLogsPage({ searchParams }: AdminLogsPageProps
 
               return (
                 <tr key={log.id}>
-                  <td>{new Date(log.createdAt).toLocaleString("he-IL")}</td>
+                  <td>{formatIsraelDateTime(log.createdAt)}</td>
                   <td>
                     <strong>{log.actorDisplayName}</strong>
                     <div className="muted">{log.actorRole ? ROLE_LABELS[log.actorRole] ?? log.actorRole : "ללא משתמש"}</div>

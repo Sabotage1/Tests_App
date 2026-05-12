@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { prepareTestDraftAction } from "@/app/actions";
 import { SubmitButton } from "@/components/SubmitButton";
 import { QUESTION_UNIT_LABELS, type QuestionUnit } from "@/lib/constants";
+import { ISRAEL_TIME_ZONE } from "@/lib/date-time";
 import type { Option, QuestionRow, RecipientList } from "@/lib/types";
 
 type RecipientDraft = {
@@ -43,15 +44,25 @@ type NewTestFormProps = {
   subjects: Option[];
 };
 
-function getBrowserLocalDateTimeValue() {
+function getIsraelDateTimeInputValue() {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    timeZone: ISRAEL_TIME_ZONE,
+    year: "numeric",
+  })
+    .formatToParts(now)
+    .reduce<Record<string, string>>((current, part) => {
+      current[part.type] = part.value;
+      return current;
+    }, {});
 
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 }
 
 function createEmptyRecipient(): RecipientDraft {
@@ -151,7 +162,7 @@ export function NewTestForm({
       return;
     }
 
-    setSentAtValue(getBrowserLocalDateTimeValue());
+    setSentAtValue(getIsraelDateTimeInputValue());
   }, [initialValues.sentAt]);
 
   useEffect(() => {

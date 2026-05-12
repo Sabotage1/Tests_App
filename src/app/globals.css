@@ -765,6 +765,12 @@ textarea {
   word-break: break-word;
 }
 
+.timer-stack {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
 .timer {
   display: inline-flex;
   align-items: center;
@@ -773,6 +779,21 @@ textarea {
   border-radius: 999px;
   padding: 10px 14px;
   font-weight: 700;
+}
+
+.timer-warning {
+  border: 1px solid #ffc857;
+  border-radius: 10px;
+  background: #fff5dc;
+  color: #7f5a00;
+  font-weight: 700;
+  padding: 8px 12px;
+  text-align: center;
+}
+
+.autosave-status {
+  margin-top: 8px;
+  text-align: center;
 }
 
 .login-wrap {
