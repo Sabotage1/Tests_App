@@ -256,6 +256,31 @@ function getScoredQuestionCount(questions: Array<{ isBonus: boolean }>) {
   return regularCount > 0 ? regularCount : questions.length;
 }
 
+const loadAppSetting = unstable_cache(
+  async (key: string) => {
+    const result = await query<{ value: string }>("SELECT value FROM app_settings WHERE key = $1", [key]);
+    return result.rows[0]?.value ?? null;
+  },
+  ["app-setting"],
+  { revalidate: 300, tags: ["app-settings"] },
+);
+
+const loadPendingReviewCount = unstable_cache(
+  async (allowedUnits: QuestionUnit[]) => {
+    const values: unknown[] = [];
+    const unitCondition =
+      allowedUnits.length > 0 ? ` AND unit = ANY($${values.push(allowedUnits)}::text[])` : "";
+    const result = await query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM tests WHERE status = 'completed'${unitCondition}`,
+      values,
+    );
+
+    return Number(result.rows[0]?.count ?? 0);
+  },
+  ["pending-review-count"],
+  { revalidate: 15, tags: ["test-stats"] },
+);
+
 export async function createAuditLog(input: CreateAuditLogInput) {
   await query(
     `
@@ -974,22 +999,14 @@ export async function getSubjects(unit?: QuestionUnit) {
 }
 
 export async function getDefaultTestDurationMinutes() {
-  const result = await query<{ value: string }>(
-    "SELECT value FROM app_settings WHERE key = $1",
-    ["default_test_duration_minutes"],
-  );
-
-  const parsed = Number(result.rows[0]?.value ?? DEFAULT_DURATION_MINUTES);
+  const value = await loadAppSetting("default_test_duration_minutes");
+  const parsed = Number(value ?? DEFAULT_DURATION_MINUTES);
   return Number.isNaN(parsed) ? DEFAULT_DURATION_MINUTES : parsed;
 }
 
 export async function getBonusQuestionPoints() {
-  const result = await query<{ value: string }>(
-    "SELECT value FROM app_settings WHERE key = $1",
-    ["bonus_question_points"],
-  );
-
-  const parsed = Number(result.rows[0]?.value ?? DEFAULT_BONUS_QUESTION_POINTS);
+  const value = await loadAppSetting("bonus_question_points");
+  const parsed = Number(value ?? DEFAULT_BONUS_QUESTION_POINTS);
   return Number.isNaN(parsed) ? DEFAULT_BONUS_QUESTION_POINTS : parsed;
 }
 
@@ -1024,15 +1041,7 @@ export async function deleteAllTests() {
 
 export async function getPendingReviewCount(units?: QuestionUnit | QuestionUnit[]) {
   const allowedUnits = normalizeUnitFilter(units);
-  const values: unknown[] = [];
-  const unitCondition =
-    allowedUnits.length > 0 ? ` AND unit = ANY($${values.push(allowedUnits)}::text[])` : "";
-  const result = await query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM tests WHERE status = 'completed'${unitCondition}`,
-    values,
-  );
-
-  return Number(result.rows[0]?.count ?? 0);
+  return loadPendingReviewCount(allowedUnits);
 }
 
 export async function getStages(unit?: QuestionUnit) {
@@ -2215,52 +2224,94 @@ export async function deleteQuestion(id: string) {
   await query("DELETE FROM questions WHERE id = $1", [id]);
 }
 
+const loadDashboardStats = unstable_cache(
+  async (allowedUnits: QuestionUnit[]) => {
+    const questionValues: unknown[] = [];
+    const questionUnitCondition =
+      allowedUnits.length > 0 ? ` AND unit = ANY($${questionValues.push(allowedUnits)}::text[])` : "";
+    const testValues = allowedUnits.length > 0 ? [allowedUnits] : [];
+    const testUnitCondition = allowedUnits.length > 0 ? ` WHERE unit = ANY($1::text[])` : "";
+    const failedValues = allowedUnits.length > 0 ? [allowedUnits] : [];
+    const failedUnitCondition = allowedUnits.length > 0 ? ` AND unit = ANY($1::text[])` : "";
+    const [questionsResult, testsResult, failedResult] = await Promise.all([
+      query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM questions WHERE is_active = TRUE${questionUnitCondition}`,
+        questionValues,
+      ),
+      query<{ status: string; count: string }>(
+        `
+          SELECT status, COUNT(*)::text AS count
+          FROM tests
+          ${testUnitCondition}
+          GROUP BY status
+        `,
+        testValues,
+      ),
+      query<{ count: string }>(
+        `
+          SELECT COUNT(*)::text AS count
+          FROM tests
+          WHERE status = 'graded' AND grade < 60${failedUnitCondition}
+        `,
+        failedValues,
+      ),
+    ]);
+
+    const statsMap = new Map(testsResult.rows.map((row) => [row.status, Number(row.count)]));
+
+    return {
+      questions: Number(questionsResult.rows[0]?.count ?? 0),
+      generated: statsMap.get("generated") ?? 0,
+      sent: statsMap.get("sent") ?? 0,
+      completed: statsMap.get("completed") ?? 0,
+      graded: statsMap.get("graded") ?? 0,
+      failed: Number(failedResult.rows[0]?.count ?? 0),
+    } satisfies DashboardStats;
+  },
+  ["dashboard-stats"],
+  { revalidate: 15, tags: ["test-stats"] },
+);
+
 export async function getDashboardStats(units?: QuestionUnit | QuestionUnit[]) {
-  const allowedUnits = normalizeUnitFilter(units);
-  const questionValues: unknown[] = [];
-  const questionUnitCondition =
-    allowedUnits.length > 0 ? ` AND unit = ANY($${questionValues.push(allowedUnits)}::text[])` : "";
-  const testValues = allowedUnits.length > 0 ? [allowedUnits] : [];
-  const testUnitCondition = allowedUnits.length > 0 ? ` WHERE unit = ANY($1::text[])` : "";
-  const failedValues = allowedUnits.length > 0 ? [allowedUnits] : [];
-  const failedUnitCondition = allowedUnits.length > 0 ? ` AND unit = ANY($1::text[])` : "";
-  const [questionsResult, testsResult, failedResult] = await Promise.all([
-    query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM questions WHERE is_active = TRUE${questionUnitCondition}`,
-      questionValues,
-    ),
-    query<{ status: string; count: string }>(`
-      SELECT status, COUNT(*)::text AS count
-      FROM tests
-      ${testUnitCondition}
-      GROUP BY status
-    `, testValues),
-    query<{ count: string }>(`
-      SELECT COUNT(*)::text AS count
-      FROM tests
-      WHERE status = 'graded' AND grade < 60${failedUnitCondition}
-    `, failedValues),
-  ]);
-
-  const statsMap = new Map(testsResult.rows.map((row) => [row.status, Number(row.count)]));
-
-  const stats: DashboardStats = {
-    questions: Number(questionsResult.rows[0]?.count ?? 0),
-    generated: statsMap.get("generated") ?? 0,
-    sent: statsMap.get("sent") ?? 0,
-    completed: statsMap.get("completed") ?? 0,
-    graded: statsMap.get("graded") ?? 0,
-    failed: Number(failedResult.rows[0]?.count ?? 0),
-  };
-
-  return stats;
+  return loadDashboardStats(normalizeUnitFilter(units));
 }
 
-export async function getTests(units?: QuestionUnit | QuestionUnit[]) {
+type GetTestsOptions = {
+  statuses?: TestListItem["status"][];
+  excludeStatuses?: TestListItem["status"][];
+  excludeSelectionModes?: string[];
+  limit?: number;
+};
+
+export async function getTests(units?: QuestionUnit | QuestionUnit[], options: GetTestsOptions = {}) {
   const allowedUnits = normalizeUnitFilter(units);
   const values: unknown[] = [];
-  const whereClause =
-    allowedUnits.length > 0 ? `WHERE t.unit = ANY($${values.push(allowedUnits)}::text[])` : "";
+  const conditions: string[] = [];
+
+  if (allowedUnits.length > 0) {
+    conditions.push(`t.unit = ANY($${values.push(allowedUnits)}::text[])`);
+  }
+
+  if (options.statuses?.length) {
+    conditions.push(`t.status = ANY($${values.push(Array.from(new Set(options.statuses)))}::text[])`);
+  }
+
+  if (options.excludeStatuses?.length) {
+    conditions.push(`t.status <> ALL($${values.push(Array.from(new Set(options.excludeStatuses)))}::text[])`);
+  }
+
+  if (options.excludeSelectionModes?.length) {
+    conditions.push(
+      `t.selection_mode <> ALL($${values.push(Array.from(new Set(options.excludeSelectionModes)))}::text[])`,
+    );
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const normalizedLimit =
+    options.limit === undefined || !Number.isFinite(options.limit)
+      ? null
+      : Math.max(1, Math.min(Math.floor(options.limit), 500));
+  const limitClause = normalizedLimit === null ? "" : `LIMIT $${values.push(normalizedLimit)}`;
   const result = await query<{
     id: string;
     title: string;
@@ -2280,41 +2331,62 @@ export async function getTests(units?: QuestionUnit | QuestionUnit[]) {
     grade: string | null;
     subject_names: string[] | null;
     stage_names: string[] | null;
-  }>(`
-    SELECT
-      t.id,
-      t.title,
-      t.status,
-      t.selection_mode,
-      t.unit,
-      t.created_at::text,
-      t.updated_at::text,
-      t.sent_at::text,
-      t.started_at::text,
-      t.submitted_at::text,
-      t.graded_at::text,
-      t.question_count,
-      u.display_name AS creator_name,
-      t.student_name,
-      t.student_email,
-      t.grade::text,
-      COALESCE((
-        SELECT array_agg(DISTINCT subject_name ORDER BY subject_name)
+  }>(
+    `
+      WITH selected_tests AS MATERIALIZED (
+        SELECT
+          t.*,
+          u.display_name AS creator_name
+        FROM tests t
+        JOIN users u ON u.id = t.created_by
+        ${whereClause}
+        ORDER BY t.created_at DESC
+        ${limitClause}
+      ),
+      subjects_by_test AS (
+        SELECT
+          tq.test_id,
+          array_agg(DISTINCT subjects.subject_name ORDER BY subjects.subject_name) AS subject_names
         FROM test_questions tq
-        CROSS JOIN LATERAL unnest(tq.subject_names) AS subject_name
-        WHERE tq.test_id = t.id
-      ), ARRAY[]::TEXT[]) AS subject_names,
-      COALESCE((
-        SELECT array_agg(DISTINCT stage_name ORDER BY stage_name)
+        JOIN selected_tests selected ON selected.id = tq.test_id
+        CROSS JOIN LATERAL unnest(tq.subject_names) AS subjects(subject_name)
+        GROUP BY tq.test_id
+      ),
+      stages_by_test AS (
+        SELECT
+          tq.test_id,
+          array_agg(DISTINCT stages.stage_name ORDER BY stages.stage_name) AS stage_names
         FROM test_questions tq
-        CROSS JOIN LATERAL unnest(tq.stage_names) AS stage_name
-        WHERE tq.test_id = t.id
-      ), ARRAY[]::TEXT[]) AS stage_names
-    FROM tests t
-    JOIN users u ON u.id = t.created_by
-    ${whereClause}
-    ORDER BY t.created_at DESC
-  `, values);
+        JOIN selected_tests selected ON selected.id = tq.test_id
+        CROSS JOIN LATERAL unnest(tq.stage_names) AS stages(stage_name)
+        GROUP BY tq.test_id
+      )
+      SELECT
+        selected.id,
+        selected.title,
+        selected.status,
+        selected.selection_mode,
+        selected.unit,
+        selected.created_at::text,
+        selected.updated_at::text,
+        selected.sent_at::text,
+        selected.started_at::text,
+        selected.submitted_at::text,
+        selected.graded_at::text,
+        selected.question_count,
+        selected.creator_name,
+        selected.student_name,
+        selected.student_email,
+        selected.grade::text,
+        COALESCE(subjects.subject_names, ARRAY[]::TEXT[]) AS subject_names,
+        COALESCE(stages.stage_names, ARRAY[]::TEXT[]) AS stage_names
+      FROM selected_tests selected
+      LEFT JOIN subjects_by_test subjects ON subjects.test_id = selected.id
+      LEFT JOIN stages_by_test stages ON stages.test_id = selected.id
+      ORDER BY selected.created_at DESC
+    `,
+    values,
+  );
 
   return result.rows.map((row) => ({
     id: row.id,

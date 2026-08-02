@@ -21,9 +21,17 @@ declare global {
 
 const connectionString =
   process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:55432/atc_tests";
+const DATABASE_SCHEMA_VERSION_KEY = "database_schema_version";
+const DATABASE_SCHEMA_VERSION = "2026-08-01-performance-v1";
+const DATABASE_MIGRATION_LOCK_KEY = "atc-tests-database-migration";
 const QUESTION_SEED_COMPLETED_KEY = "question_seed_completed";
 const SUBJECT_SEED_COMPLETED_KEY = "subject_seed_completed";
 const STAGE_SEED_COMPLETED_KEY = "stage_seed_completed";
+
+function getPoolMax() {
+  const configuredMax = Number(process.env.DATABASE_POOL_MAX ?? "5");
+  return Number.isInteger(configuredMax) && configuredMax > 0 ? configuredMax : 5;
+}
 
 function getInitialUsers() {
   const users: Array<{
@@ -66,10 +74,23 @@ function getPool() {
   if (!global.__atcPool__) {
     global.__atcPool__ = new Pool({
       connectionString,
+      connectionTimeoutMillis: 5_000,
+      idleTimeoutMillis: 10_000,
+      max: getPoolMax(),
     });
   }
 
   return global.__atcPool__;
+}
+
+async function createPerformanceIndexes(client: PoolClient) {
+  await client.query(`
+    CREATE INDEX IF NOT EXISTS questions_unit_active_idx ON questions (unit, is_active);
+    CREATE INDEX IF NOT EXISTS tests_created_by_idx ON tests (created_by);
+    CREATE INDEX IF NOT EXISTS tests_unit_created_at_idx ON tests (unit, created_at DESC);
+    CREATE INDEX IF NOT EXISTS tests_unit_status_created_at_idx ON tests (unit, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS test_questions_test_order_idx ON test_questions (test_id, order_index);
+  `);
 }
 
 async function createSchema(client: PoolClient) {
@@ -299,6 +320,8 @@ async function createSchema(client: PoolClient) {
     END
     $$;
   `);
+
+  await createPerformanceIndexes(client);
 }
 
 async function seedUsers(client: PoolClient) {
@@ -616,12 +639,58 @@ async function migrateStructuredTestQuestionChoices(client: PoolClient) {
   }
 }
 
-async function initializeDatabase() {
+function isUndefinedTableError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "42P01"
+  );
+}
+
+async function hasCurrentDatabaseSchema() {
+  const pool = getPool();
+
+  try {
+    const result = await pool.query<{ value: string }>("SELECT value FROM app_settings WHERE key = $1", [
+      DATABASE_SCHEMA_VERSION_KEY,
+    ]);
+    return result.rows[0]?.value === DATABASE_SCHEMA_VERSION;
+  } catch (error) {
+    if (isUndefinedTableError(error)) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+async function migrateDatabase() {
   const pool = getPool();
   const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [DATABASE_MIGRATION_LOCK_KEY]);
+
+    const settingsTableResult = await client.query<{ exists: boolean }>(
+      "SELECT to_regclass('public.app_settings') IS NOT NULL AS exists",
+    );
+    if (settingsTableResult.rows[0]?.exists) {
+      const versionResult = await client.query<{ value: string }>("SELECT value FROM app_settings WHERE key = $1", [
+        DATABASE_SCHEMA_VERSION_KEY,
+      ]);
+      if (versionResult.rows[0]?.value === DATABASE_SCHEMA_VERSION) {
+        await client.query("COMMIT");
+        return;
+      }
+
+      await createPerformanceIndexes(client);
+      await upsertAppSetting(client, DATABASE_SCHEMA_VERSION_KEY, DATABASE_SCHEMA_VERSION);
+      await client.query("COMMIT");
+      return;
+    }
+
     await createSchema(client);
     await seedUsers(client);
     await seedLookupTable(client, "subjects", getSeedSubjects());
@@ -630,6 +699,7 @@ async function initializeDatabase() {
     await seedSettings(client);
     await migrateStructuredQuestionChoices(client);
     await migrateStructuredTestQuestionChoices(client);
+    await upsertAppSetting(client, DATABASE_SCHEMA_VERSION_KEY, DATABASE_SCHEMA_VERSION);
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -639,12 +709,37 @@ async function initializeDatabase() {
   }
 }
 
+async function initializeDatabase() {
+  if (await hasCurrentDatabaseSchema()) {
+    return;
+  }
+
+  await migrateDatabase();
+}
+
 export async function ensureDatabaseInitialized() {
   if (!global.__atcDbInit__) {
     global.__atcDbInit__ = initializeDatabase();
   }
 
-  return global.__atcDbInit__;
+  try {
+    await global.__atcDbInit__;
+  } catch (error) {
+    global.__atcDbInit__ = undefined;
+    throw error;
+  }
+}
+
+export async function runDatabaseMigrations() {
+  await migrateDatabase();
+  global.__atcDbInit__ = Promise.resolve();
+}
+
+export async function closeDatabase() {
+  const pool = global.__atcPool__;
+  global.__atcPool__ = undefined;
+  global.__atcDbInit__ = undefined;
+  await pool?.end();
 }
 
 export async function query<T extends QueryResultRow>(text: string, values: unknown[] = []) {

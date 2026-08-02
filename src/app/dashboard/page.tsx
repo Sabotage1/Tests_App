@@ -23,9 +23,14 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const user = await requireUser();
   const params = await searchParams;
   const accessibleUnits = getAccessibleUnitsForUser(user);
-  const [stats, tests] = await Promise.all([getDashboardStats(accessibleUnits), getTests(accessibleUnits)]);
   const selectedStatus = isValidStatus(params.status) ? params.status : null;
-  const filteredTests = selectedStatus ? tests.filter((test) => test.status === selectedStatus) : tests;
+  const [stats, tests] = await Promise.all([
+    getDashboardStats(accessibleUnits),
+    getTests(accessibleUnits, {
+      statuses: selectedStatus ? [selectedStatus] : undefined,
+      limit: 50,
+    }),
+  ]);
 
   return (
     <div className="stack">
@@ -108,7 +113,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
             </tr>
           </thead>
           <tbody>
-            {filteredTests.map((test) => (
+            {tests.map((test) => (
               <tr key={test.id}>
                 <td>
                   <Link href={`/tests/${test.id}`}>{test.title}</Link>
@@ -120,7 +125,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
                 <td>{test.grade ?? "-"}</td>
               </tr>
             ))}
-            {filteredTests.length === 0 ? (
+            {tests.length === 0 ? (
               <tr>
                 <td colSpan={6}>אין מבחנים להצגה במסנן שנבחר.</td>
               </tr>

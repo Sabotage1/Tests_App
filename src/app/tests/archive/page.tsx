@@ -33,11 +33,11 @@ export default async function ArchiveTestsPage({ searchParams }: ArchivePageProp
   const params = await searchParams;
   const selectedUnit: QuestionUnit = getSelectedUnitForUser(user, params.unit);
   const unitOrder = getUnitOrderForUser(user);
-  const tests = await getTests(selectedUnit);
+  const tests = await getTests(selectedUnit, { excludeStatuses: ["generated"] });
   const selectedYear = params.year?.trim() ?? "";
   const selectedSubject = params.subject?.trim() ?? "";
   const selectedStage = params.stage?.trim() ?? "";
-  const archivedTests = tests.filter((test) => test.status !== "generated");
+  const archivedTests = tests;
   const availableYears = Array.from(
     new Set(
       archivedTests

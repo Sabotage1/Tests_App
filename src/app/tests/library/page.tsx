@@ -40,8 +40,10 @@ export default async function TestLibraryPage({ searchParams }: TestLibraryPageP
   const params = await searchParams;
   const selectedUnit: QuestionUnit = getSelectedUnitForUser(user, params.unit);
   const unitOrder = getUnitOrderForUser(user);
-  const [tests, recipientLists] = await Promise.all([getTests(selectedUnit), getRecipientLists(selectedUnit)]);
-  const reusableTests = tests.filter((test) => test.selectionMode !== "archived_copy");
+  const [reusableTests, recipientLists] = await Promise.all([
+    getTests(selectedUnit, { excludeSelectionModes: ["archived_copy"] }),
+    getRecipientLists(selectedUnit),
+  ]);
 
   return (
     <div className="stack">

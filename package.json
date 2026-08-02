@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "db:migrate": "node --env-file=.env.local --import tsx scripts/migrate.ts",
     "start": "next start",
     "lint": "next lint",
     "seed": "node --env-file=.env.local --import tsx scripts/seed.ts"

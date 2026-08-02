@@ -328,6 +328,7 @@ function buildRecipientListsRedirectPath(unit: string | undefined, extra?: strin
 }
 
 function revalidateTestCollections() {
+  revalidateTag("test-stats", "max");
   revalidatePath("/dashboard");
   revalidatePath("/tests/library");
   revalidatePath("/tests/archive");
@@ -843,6 +844,7 @@ export async function saveDefaultDurationAction(formData: FormData) {
   const durationMinutes = rawValue === "" ? currentDefault : Number(rawValue);
 
   await setDefaultTestDurationMinutes(Number.isNaN(durationMinutes) ? currentDefault : durationMinutes);
+  revalidateTag("app-settings", "max");
   await logUserAudit(user, {
     action: "settings.default_duration_updated",
     entityType: "settings",
@@ -865,6 +867,7 @@ export async function saveBonusQuestionPointsAction(formData: FormData) {
   const points = rawValue === "" ? currentValue : Number(rawValue);
 
   await setBonusQuestionPoints(Number.isNaN(points) ? currentValue : points);
+  revalidateTag("app-settings", "max");
   await logUserAudit(user, {
     action: "settings.bonus_points_updated",
     entityType: "settings",
@@ -1522,6 +1525,7 @@ export async function submitSharedTestAction(formData: FormData) {
   revalidatePath("/tests/review");
   revalidatePath("/tests/archive");
   revalidatePath("/tests/library");
+  revalidateTag("test-stats", "max");
   if (testId) {
     revalidatePath(`/tests/${testId}`);
     const submittedTest = await getTestById(testId);
@@ -1583,6 +1587,7 @@ export async function gradeTestAction(formData: FormData) {
   revalidatePath(`/tests/${testId}`);
   revalidatePath("/tests/graded");
   revalidatePath("/dashboard");
+  revalidateTag("test-stats", "max");
 
   let redirectPath = `/tests/${testId}?mail=sent` as RedirectPath;
   try {
@@ -1620,6 +1625,7 @@ export async function gradeTestWithAiAction(formData: FormData) {
 
   revalidatePath(`/tests/${testId}`);
   revalidatePath(`/tests/${testId}/grade`);
+  revalidateTag("test-stats", "max");
   redirect(`/tests/${testId}/grade?aiSaved=1&aiGrade=${encodeURIComponent(String(aiGrade ?? ""))}`);
 }
 

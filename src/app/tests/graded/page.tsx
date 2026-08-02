@@ -64,8 +64,8 @@ function matchesGradeBand(grade: number, band: GradeBand) {
 export default async function GradedTestsPage({ searchParams }: GradedTestsPageProps) {
   const user = await requireUser();
   const params = await searchParams;
-  const tests = await getTests(getAccessibleUnitsForUser(user));
-  const gradedTests = tests.filter((test) => test.status === "graded" && test.grade !== null);
+  const tests = await getTests(getAccessibleUnitsForUser(user), { statuses: ["graded"] });
+  const gradedTests = tests.filter((test) => test.grade !== null);
   const years = [...new Set(gradedTests.map((test) => getTestYear(test.gradedAt)).filter(Boolean))].sort((a, b) =>
     Number(b) - Number(a),
   ) as string[];
